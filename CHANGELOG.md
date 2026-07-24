@@ -201,4 +201,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `infra/postgres/init.sql` for local development bootstrap.
 - Maven wrapper (`mvnw` / `mvnw.cmd`).
 - `.gitignore` covering `target/`, IDE files, and secrets (`.env`).
-- `PRD.md` (product requirements) and `SRS.md` (software requirements specification).
+- `docs/PRD.md` (product requirements) and `docs/SRS.md` (software requirements specification).
