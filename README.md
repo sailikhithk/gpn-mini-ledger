@@ -72,27 +72,17 @@ docker compose up -d
 
 ## Architecture
 
+> Diagrams generated with the [Python `diagrams` package](https://diagrams.mingrammer.com/) (AWS-style icons). Source: [`docs/generate_diagrams.py`](docs/generate_diagrams.py) — run `python3 docs/generate_diagrams.py` to regenerate.
+
 ### System Context Diagram
 
-![System Context](docs/diagrams/01-system-context.svg)
-
-<details>
-<summary>View D2 source</summary>
-
-See [`docs/diagrams/01-system-context.d2`](docs/diagrams/01-system-context.d2)
-</details>
+![System Context](docs/diagrams/01-system-context.png)
 
 ### The Layered Priority Stack
 
 This is the core framework. Every module maps to exactly one layer. When priorities conflict, **the higher layer wins**.
 
-![Layered Priority Stack](docs/diagrams/02-layered-priority-stack.svg)
-
-<details>
-<summary>View D2 source</summary>
-
-See [`docs/diagrams/02-layered-priority-stack.d2`](docs/diagrams/02-layered-priority-stack.d2)
-</details>
+![Layered Priority Stack](docs/diagrams/02-layered-priority-stack.png)
 
 **Conflict resolution examples:**
 - **L1 vs L2**: Edge switch returns 503, but ledger never accepts an inconsistent write.
@@ -101,35 +91,17 @@ See [`docs/diagrams/02-layered-priority-stack.d2`](docs/diagrams/02-layered-prio
 
 ### Module Map
 
-![Module Map](docs/diagrams/03-module-map.svg)
-
-<details>
-<summary>View D2 source</summary>
-
-See [`docs/diagrams/03-module-map.d2`](docs/diagrams/03-module-map.d2)
-</details>
+![Module Map](docs/diagrams/03-module-map.png)
 
 > **Status**: `ledger-core`, `api-gateway`, and `outbox` are implemented. Remaining modules are planned — see [`docs/PRD.md`](docs/PRD.md) for the full roadmap.
 
 ### Request Flow — Capture Sequence
 
-![Request Flow - Capture Sequence](docs/diagrams/04-request-flow.svg)
-
-<details>
-<summary>View D2 source</summary>
-
-See [`docs/diagrams/04-request-flow.d2`](docs/diagrams/04-request-flow.d2)
-</details>
+![Request Flow - Capture Sequence](docs/diagrams/04-request-flow.png)
 
 ### Data Model ERD
 
-![Data Model ERD](docs/diagrams/05-data-model.svg)
-
-<details>
-<summary>View D2 source</summary>
-
-See [`docs/diagrams/05-data-model.d2`](docs/diagrams/05-data-model.d2)
-</details>
+![Data Model ERD](docs/diagrams/05-data-model.png)
 
 **Invariants enforced in code:**
 - `LED-001`: For every `JournalEntry`, `SUM(debits) = SUM(credits)`
@@ -138,13 +110,7 @@ See [`docs/diagrams/05-data-model.d2`](docs/diagrams/05-data-model.d2)
 
 ### Concurrency — SERIALIZABLE + Retry
 
-![Concurrency - SERIALIZABLE + Retry](docs/diagrams/06-concurrency-retry.svg)
-
-<details>
-<summary>View D2 source</summary>
-
-See [`docs/diagrams/06-concurrency-retry.d2`](docs/diagrams/06-concurrency-retry.d2)
-</details>
+![Concurrency - SERIALIZABLE + Retry](docs/diagrams/06-concurrency-retry.png)
 
 **Tested by:** `ConcurrentCaptureInvariantTest` — 20 threads, 10 succeed, 10 rejected, zero "other errors", ledger balanced.
 
@@ -212,13 +178,7 @@ These are the tests that make the repo stand out. Each is graded at a proof leve
 
 ## CI/CD Pipeline
 
-![CI/CD Pipeline](docs/diagrams/07-cicd-pipeline.svg)
-
-<details>
-<summary>View D2 source</summary>
-
-See [`docs/diagrams/07-cicd-pipeline.d2`](docs/diagrams/07-cicd-pipeline.d2)
-</details>
+![CI/CD Pipeline](docs/diagrams/07-cicd-pipeline.png)
 
 **12 workflows active.** See [`.github/CI-CD.md`](.github/CI-CD.md) for the full pipeline reference and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow.
 
