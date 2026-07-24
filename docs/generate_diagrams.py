@@ -8,8 +8,7 @@ import os
 OUT_DIR = os.path.join(os.path.dirname(__file__), "diagrams")
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# Dark mode graph attributes
-DARK_ATTR = {
+GRAPH_ATTR = {
     "bgcolor": "white",
     "fontcolor": "#1f2328",
     "fontsize": "14",
@@ -30,6 +29,7 @@ def diagram_01_system_context():
     from diagrams.onprem.compute import Server
     from diagrams.onprem.database import PostgreSQL
     from diagrams.onprem.inmemory import Redis
+    from diagrams.aws.network import APIGateway
     from diagrams.aws.storage import S3
 
     with Diagram(
@@ -37,7 +37,7 @@ def diagram_01_system_context():
         filename=os.path.join(OUT_DIR, "01-system-context"),
         show=False,
         direction="TB",
-        graph_attr=DARK_ATTR,
+        graph_attr=GRAPH_ATTR,
         node_attr=NODE_ATTR,
     ):
         merchant = Client("Merchant")
@@ -45,7 +45,7 @@ def diagram_01_system_context():
         interviewer = Users("Capital One\nInterviewer")
 
         with Cluster("GPN Mini Ledger"):
-            gateway = Server("API Gateway\n(Edge Switch)")
+            gateway = APIGateway("API Gateway\n(Edge Switch)")
             ledger = Server("Ledger Core\n(CP - Strong Consistency)")
             outbox = Server("Outbox Worker\n(BASE - Eventual)")
 
@@ -74,7 +74,7 @@ def diagram_02_layered_priority_stack():
         filename=os.path.join(OUT_DIR, "02-layered-priority-stack"),
         show=False,
         direction="LR",
-        graph_attr=DARK_ATTR,
+        graph_attr=GRAPH_ATTR,
         node_attr=NODE_ATTR,
     ):
         with Cluster("Layer 1 - Core Ledger (CP)"):
@@ -117,6 +117,9 @@ def diagram_03_module_map():
     from diagrams.onprem.compute import Server
     from diagrams.onprem.database import PostgreSQL
     from diagrams.onprem.inmemory import Redis
+    from diagrams.aws.network import APIGateway
+    from diagrams.aws.integration import SQS, SNS
+    from diagrams.aws.security import KMS
     from diagrams.aws.storage import S3
 
     with Diagram(
@@ -124,23 +127,23 @@ def diagram_03_module_map():
         filename=os.path.join(OUT_DIR, "03-module-map"),
         show=False,
         direction="TB",
-        graph_attr=DARK_ATTR,
+        graph_attr=GRAPH_ATTR,
         node_attr=NODE_ATTR,
     ):
         with Cluster("Layer 1 - Core Ledger"):
             ledger_core = Server("ledger-core\nLedgerService - JournalEntry\nAccount - AuthorizationHold")
-            audit_chain = Server("audit-chain (planned)\nSHA-256 hash chain")
+            audit_chain = KMS("audit-chain (planned)\nSHA-256 hash chain")
 
         with Cluster("Layer 2 - Edge Switch"):
-            api_gateway = Server("api-gateway\nRequest routing\nRate limiting")
+            api_gateway = APIGateway("api-gateway\nRequest routing\nRate limiting")
             idempotency = Server("idempotency (planned)\nRedis + Postgres\ntwo-layer")
             orchestrator = Server("orchestrator (planned)\nPaymentSaga\ncompensation")
             fraud = Server("fraud-degradation (planned)\nfail-safe (not fail-open)")
 
         with Cluster("Layer 3 - Async Lane"):
-            outbox = Server("outbox\nSKIP LOCKED claim\nstale reclaim")
+            outbox = SQS("outbox\nSKIP LOCKED claim\nstale reclaim")
             reconciliation = Server("reconciliation (planned)\nfingerprinted dedup")
-            webhook = Server("webhook (planned)\nHMAC + replay protection")
+            webhook = SNS("webhook (planned)\nHMAC + replay protection")
 
         with Cluster("Data Stores"):
             postgres = PostgreSQL("PostgreSQL 16")
@@ -167,21 +170,23 @@ def diagram_04_request_flow():
     from diagrams.onprem.client import Client
     from diagrams.onprem.compute import Server
     from diagrams.onprem.database import PostgreSQL
+    from diagrams.aws.network import APIGateway
+    from diagrams.aws.integration import SNS
 
     with Diagram(
         "Request Flow - Capture Sequence",
         filename=os.path.join(OUT_DIR, "04-request-flow"),
         show=False,
         direction="TB",
-        graph_attr=DARK_ATTR,
+        graph_attr=GRAPH_ATTR,
         node_attr=NODE_ATTR,
     ):
         merchant = Client("Merchant")
-        gateway = Server("API Gateway")
+        gateway = APIGateway("API Gateway")
         ledger = Server("LedgerService")
         postgres = PostgreSQL("PostgreSQL\n(SERIALIZABLE)")
         outbox = Server("Outbox Worker")
-        webhook = Server("Webhook (planned)")
+        webhook = SNS("Webhook (planned)")
 
         merchant >> Edge(label="1. POST /capture") >> gateway
         gateway >> Edge(label="2. Validate") >> gateway
@@ -215,7 +220,7 @@ def diagram_05_data_model():
         filename=os.path.join(OUT_DIR, "05-data-model"),
         show=False,
         direction="LR",
-        graph_attr=DARK_ATTR,
+        graph_attr=GRAPH_ATTR,
         node_attr=NODE_ATTR,
     ):
         account = PostgreSQL("ACCOUNT\nid: uuid PK\ncode: string\ntype: AccountType\ncurrency: string\nbalance_minor: bigint")
@@ -231,15 +236,13 @@ def diagram_05_data_model():
 def diagram_06_concurrency_retry():
     from diagrams import Diagram, Edge
     from diagrams.onprem.compute import Server
-    from diagrams.generic.storage import Storage
-    from diagrams.generic.compute import Rack
 
     with Diagram(
         "Concurrency - SERIALIZABLE + Retry",
         filename=os.path.join(OUT_DIR, "06-concurrency-retry"),
         show=False,
         direction="TB",
-        graph_attr=DARK_ATTR,
+        graph_attr=GRAPH_ATTR,
         node_attr=NODE_ATTR,
     ):
         start = Server("capture() called")
@@ -277,14 +280,15 @@ def diagram_07_cicd_pipeline():
     from diagrams import Diagram, Cluster, Edge
     from diagrams.onprem.compute import Server
     from diagrams.onprem.vcs import Git
-    from diagrams.aws.devtools import Codebuild as CodeBuild
+    from diagrams.aws.devtools import Codebuild
+    from diagrams.aws.security import Shield
 
     with Diagram(
         "CI/CD Pipeline",
         filename=os.path.join(OUT_DIR, "07-cicd-pipeline"),
         show=False,
         direction="LR",
-        graph_attr=DARK_ATTR,
+        graph_attr=GRAPH_ATTR,
         node_attr=NODE_ATTR,
     ):
         with Cluster("Pull Request"):
@@ -295,9 +299,9 @@ def diagram_07_cicd_pipeline():
             copilot = Server("Copilot Review\n(advisory)")
 
         with Cluster("Blocking Gates"):
-            ci = CodeBuild("CI\nBuild + Test (JDK 25)")
+            ci = Codebuild("CI\nBuild + Test (JDK 25)")
             migration = Server("Migration Check\n6 Flyway checks")
-            codeql = Server("CodeQL\nstatic analysis")
+            codeql = Shield("CodeQL\nstatic analysis")
 
         with Cluster("Release"):
             squash = Git("Squash Merge\nto main")
