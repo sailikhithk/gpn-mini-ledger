@@ -70,9 +70,11 @@ class ConcurrentCaptureInvariantTest {
         registry.add("spring.flyway.schemas", () -> "ledger");
         registry.add("spring.flyway.default-schema", () -> "ledger");
         registry.add("spring.flyway.baseline-on-migrate", () -> "true");
-        // Use a fast backoff for tests
-        registry.add("gpn.ledger.retry-backoff-ms", () -> "10");
-        registry.add("gpn.ledger.max-retries", () -> "5");
+        // Use a generous backoff for concurrent tests under CI runner contention.
+        // 20 threads under SERIALIZABLE isolation produce 40001 conflicts that
+        // need more retries + longer backoff than the default production config.
+        registry.add("gpn.ledger.retry-backoff-ms", () -> "50");
+        registry.add("gpn.ledger.max-retries", () -> "10");
     }
 
     @Autowired
