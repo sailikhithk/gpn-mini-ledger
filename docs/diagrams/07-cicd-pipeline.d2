@@ -1,0 +1,52 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 200
+  }
+}
+
+Pull Request: {
+  style.fill: "#16213e"
+  style.stroke: "#e94560"
+  style.stroke-width: 2
+
+  "Branch Naming": {style.fill: "#1a1a2e"}
+  "PR Lint": {label: "PR Lint\nConventional Commits"; style.fill: "#1a1a2e"}
+  "Labeler": {label: "Labeler\n+ Size Labeler"; style.fill: "#1a1a2e"}
+  "Anti-Pattern Scan": {label: "Anti-Pattern Scan\n(advisory)"; style.fill: "#1a1a2e"; style.stroke-dash: 3}
+  "Copilot Review": {label: "Copilot Review\n(advisory)"; style.fill: "#1a1a2e"; style.stroke-dash: 3}
+}
+
+Blocking Gates: {
+  style.fill: "#0f3460"
+  style.stroke: "#e94560"
+  style.stroke-width: 3
+
+  "CI": {label: "CI\nBuild + Test (JDK 25)"; style.fill: "#1a1a2e"; style.stroke-width: 2}
+  "Migration Check": {label: "Migration Check\n6 Flyway checks"; style.fill: "#1a1a2e"}
+  "CodeQL": {label: "CodeQL\nstatic analysis"; style.fill: "#1a1a2e"}
+}
+
+Release: {
+  style.fill: "#16213e"
+  style.stroke: "#e94560"
+  style.stroke-width: 2
+
+  "Squash Merge": {label: "Squash Merge\nto main"; style.fill: "#0f3460"; style.stroke-width: 2}
+  "release.yml": {label: "release.yml\nauto-tag + GitHub Release"; style.fill: "#1a1a2e"}
+  "stale-branches.yml": {label: "stale-branches.yml\nweekly cleanup"; style.fill: "#1a1a2e"; style.stroke-dash: 3}
+  "dependabot.yml": {label: "dependabot.yml\nweekly dependency PRs"; style.fill: "#1a1a2e"; style.stroke-dash: 3}
+}
+
+"Pull Request"."Branch Naming" -> "Blocking Gates"."CI"
+"Pull Request"."PR Lint" -> "Blocking Gates"."CI"
+"Pull Request"."Labeler" -> "Blocking Gates"."CI"
+"Pull Request"."Anti-Pattern Scan" -> "Blocking Gates"."CI"
+"Pull Request"."Copilot Review" -> "Blocking Gates"."CI"
+
+"Blocking Gates"."CI" -> "Blocking Gates"."Migration Check"
+"Blocking Gates"."Migration Check" -> "Blocking Gates"."CodeQL"
+"Blocking Gates"."CodeQL" -> "Release"."Squash Merge"
+"Release"."Squash Merge" -> "Release"."release.yml"
+"Release"."release.yml" -> "Release"."stale-branches.yml"
+"Release"."release.yml" -> "Release"."dependabot.yml"

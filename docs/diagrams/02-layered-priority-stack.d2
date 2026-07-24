@@ -1,0 +1,49 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 200
+  }
+}
+
+Layer 1 - Core Ledger (CP): {
+  style.fill: "#0f3460"
+  style.stroke: "#e94560"
+  style.stroke-width: 3
+
+  Correctness: {style.fill: "#1a1a2e"}
+  Durability: {style.fill: "#1a1a2e"}
+  Consistency: {style.fill: "#1a1a2e"}
+  Auditability: {style.fill: "#1a1a2e"}
+  Availability: {style.fill: "#1a1a2e"}
+
+  Correctness -> Durability -> Consistency -> Auditability -> Availability
+}
+
+Layer 2 - Edge Switch (AP): {
+  style.fill: "#16213e"
+  style.stroke: "#e94560"
+  style.stroke-width: 3
+
+  Latency: {style.fill: "#1a1a2e"}
+  Availability: {label: "Availability (AP)"; style.fill: "#1a1a2e"}
+  Idempotency: {style.fill: "#1a1a2e"}
+  "Fail-safe": {style.fill: "#1a1a2e"}
+
+  Latency -> "Availability (AP)" -> Idempotency -> "Fail-safe"
+}
+
+Layer 3 - Async Lane (BASE): {
+  style.fill: "#16213e"
+  style.stroke: "#e94560"
+  style.stroke-width: 3
+
+  Throughput: {style.fill: "#1a1a2e"}
+  "Durability (BASE)": {style.fill: "#1a1a2e"}
+  "At-least-once": {style.fill: "#1a1a2e"}
+  Reconciliation: {style.fill: "#1a1a2e"}
+
+  Throughput -> "Durability (BASE)" -> "At-least-once" -> Reconciliation
+}
+
+"Layer 1 - Core Ledger (CP)" -> "Layer 2 - Edge Switch (AP)": "wins on conflict"
+"Layer 2 - Edge Switch (AP)" -> "Layer 3 - Async Lane (BASE)": "wins on conflict"

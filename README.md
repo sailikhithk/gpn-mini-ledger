@@ -75,74 +75,25 @@ docker compose up -d
 
 ### System Context Diagram
 
-```mermaid
-graph TB
-    subgraph External["External Actors"]
-        Merchant["🏪 Merchant"]
-        Cardholder["💳 Cardholder"]
-        Interviewer["👤 Capital One Interviewer"]
-    end
+![System Context](docs/diagrams/01-system-context.svg)
 
-    subgraph GPN["GPN Mini Ledger"]
-        Gateway["⚙️ API Gateway<br/>(Edge Switch)"]
-        Ledger["💰 Ledger Core<br/>(CP — Strong Consistency)"]
-        Outbox["📤 Outbox Worker<br/>(BASE — Eventual)"]
-    end
+<details>
+<summary>View D2 source</summary>
 
-    subgraph Infra["Local Infrastructure (Docker)"]
-        Postgres[("🗄️ PostgreSQL 16<br/>SERIALIZABLE + Flyway")]
-        Redis[("⚡ Redis 7<br/>Idempotency cache")]
-        LocalStack["☁️ LocalStack<br/>S3 · SQS · DynamoDB"]
-    end
-
-    Cardholder -->|"payment"| Merchant
-    Merchant -->|"authorize / capture / refund"| Gateway
-    Gateway -->|"ledger write"| Ledger
-    Ledger -->|"publish event"| Outbox
-    Ledger --> Postgres
-    Gateway --> Redis
-    Outbox --> Postgres
-    Outbox --> LocalStack
-    Interviewer -.->|"clone + verify"| GPN
-```
+See [`docs/diagrams/01-system-context.d2`](docs/diagrams/01-system-context.d2)
+</details>
 
 ### The Layered Priority Stack
 
 This is the core framework. Every module maps to exactly one layer. When priorities conflict, **the higher layer wins**.
 
-```mermaid
-graph LR
-    subgraph L1["Layer 1 — Core Ledger (CP)"]
-        direction TB
-        L1P1["✅ Correctness"]
-        L1P2["📦 Durability"]
-        L1P3["🔄 Consistency"]
-        L1P4["🔍 Auditability"]
-        L1P5["⚡ Availability"]
-        L1P1 --> L1P2 --> L1P3 --> L1P4 --> L1P5
-    end
+![Layered Priority Stack](docs/diagrams/02-layered-priority-stack.svg)
 
-    subgraph L2["Layer 2 — Edge Switch (AP)"]
-        direction TB
-        L2P1["⚡ Latency"]
-        L2P2["⚡ Availability"]
-        L2P3["🔁 Idempotency"]
-        L2P4["🛡️ Fail-safe"]
-        L2P1 --> L2P2 --> L2P3 --> L2P4
-    end
+<details>
+<summary>View D2 source</summary>
 
-    subgraph L3["Layer 3 — Async Lane (BASE)"]
-        direction TB
-        L3P1["🚀 Throughput"]
-        L3P2["📦 Durability"]
-        L3P3["📬 At-least-once"]
-        L3P4["🔍 Reconciliation"]
-        L3P1 --> L3P2 --> L3P3 --> L3P4
-    end
-
-    L1 -.->|"wins on conflict"| L2
-    L2 -.->|"wins on conflict"| L3
-```
+See [`docs/diagrams/02-layered-priority-stack.d2`](docs/diagrams/02-layered-priority-stack.d2)
+</details>
 
 **Conflict resolution examples:**
 - **L1 vs L2**: Edge switch returns 503, but ledger never accepts an inconsistent write.
@@ -151,142 +102,35 @@ graph LR
 
 ### Module Map
 
-```mermaid
-graph TB
-    subgraph L1["Layer 1 — Core Ledger"]
-        LedgerCore["💰 ledger-core<br/>LedgerService · JournalEntry<br/>Account · AuthorizationHold"]
-        AuditChain["🔗 audit-chain *(planned)*<br/>SHA-256 hash chain<br/>Tamper-evident log"]
-    end
+![Module Map](docs/diagrams/03-module-map.svg)
 
-    subgraph L2["Layer 2 — Edge Switch"]
-        APIGateway["⚙️ api-gateway<br/>Request routing<br/>Rate limiting"]
-        Idempotency["🔁 idempotency *(planned)*<br/>Redis + Postgres<br/>two-layer"]
-        Orchestrator["🎼 orchestrator *(planned)*<br/>PaymentSaga<br/>compensation"]
-        Fraud["🛡️ fraud-degradation *(planned)*<br/>fail-safe (not fail-open)"]
-    end
+<details>
+<summary>View D2 source</summary>
 
-    subgraph L3["Layer 3 — Async Lane"]
-        Outbox["📤 outbox<br/>SKIP LOCKED claim<br/>stale reclaim"]
-        Reconciliation["🔍 reconciliation *(planned)*<br/>fingerprinted dedup"]
-        Webhook["🔔 webhook *(planned)*<br/>HMAC + replay protection"]
-    end
-
-    subgraph Data["Data Stores"]
-        Postgres[("🗄️ PostgreSQL 16")]
-        Redis[("⚡ Redis 7")]
-        S3[("☁️ LocalStack S3")]
-    end
-
-    APIGateway --> LedgerCore
-    APIGateway --> Idempotency
-    LedgerCore --> Postgres
-    LedgerCore --> Outbox
-    Outbox --> Postgres
-    Idempotency --> Redis
-    Idempotency --> Postgres
-    AuditChain --> Postgres
-    AuditChain --> S3
-    Orchestrator --> LedgerCore
-    Orchestrator --> Fraud
-    Outbox --> Webhook
-    Reconciliation --> Postgres
-```
+See [`docs/diagrams/03-module-map.d2`](docs/diagrams/03-module-map.d2)
+</details>
 
 > **Status**: `ledger-core`, `api-gateway`, and `outbox` are implemented. Remaining modules are planned — see [`docs/PRD.md`](docs/PRD.md) for the full roadmap.
 
 ### Request Flow — Capture Sequence
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant M as Merchant
-    participant GW as API Gateway
-    participant LS as LedgerService
-    participant PG as PostgreSQL<br/>(SERIALIZABLE)
-    participant OB as Outbox Worker
-    participant WH as Webhook *(planned)*
+![Request Flow - Capture Sequence](docs/diagrams/04-request-flow.svg)
 
-    M->>GW: POST /capture {authId, amount, idempotencyKey}
-    GW->>GW: Validate + rate limit
+<details>
+<summary>View D2 source</summary>
 
-    rect rgb(232, 245, 233)
-        Note over LS,PG: Layer 1 - CP (strong consistency)
-        GW->>LS: capture(idempotencyKey, authId, amount)
-        LS->>PG: BEGIN ISOLATION SERIALIZABLE
-        LS->>PG: SELECT auth_hold FOR UPDATE
-        LS->>PG: CHECK: captured + amount <= authorized
-        alt exceeds authorized
-            PG-->>LS: rollback
-            LS-->>GW: CaptureExceedsAuthorizationException
-            GW-->>M: 422 Unprocessable Entity
-        else within authorized
-            LS->>PG: INSERT journal_entry (debits = credits)
-            LS->>PG: INSERT journal_lines (debit, credit)
-            LS->>PG: UPDATE auth_hold.captured_minor
-            LS->>PG: INSERT outbox_event
-            LS->>PG: COMMIT
-        end
-    end
-
-    rect rgb(227, 242, 253)
-        Note over OB,WH: Layer 3 - BASE (eventual)
-        OB->>PG: SELECT ... FOR UPDATE SKIP LOCKED
-        PG-->>OB: claimed events
-        OB->>WH: POST event (HMAC signed)
-        WH-->>OB: 200 OK
-        OB->>PG: UPDATE outbox SET published = true
-    end
-
-    LS-->>GW: LedgerEntryResult
-    GW-->>M: 200 OK {entryId, capturedMinor}
-```
+See [`docs/diagrams/04-request-flow.d2`](docs/diagrams/04-request-flow.d2)
+</details>
 
 ### Data Model ERD
 
-```mermaid
-erDiagram
-    ACCOUNT ||--o{ JOURNAL_LINE : "posts to"
-    JOURNAL_ENTRY ||--|{ JOURNAL_LINE : "contains"
-    AUTHORIZATION_HOLD ||--o{ JOURNAL_ENTRY : "produces"
+![Data Model ERD](docs/diagrams/05-data-model.svg)
 
-    ACCOUNT {
-        uuid id PK
-        string code "e.g. ASSET_CASH, LIABILITY_PAYABLE"
-        AccountType type "ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE"
-        string currency "ISO 4217"
-        bigint balance_minor "running balance in minor units"
-    }
+<details>
+<summary>View D2 source</summary>
 
-    JOURNAL_ENTRY {
-        uuid id PK
-        uuid authorization_id FK
-        EntryType type "AUTHORIZATION, CAPTURE, REFUND"
-        string currency
-        bigint amount_minor
-        string idempotency_key "UK — exactly-once"
-        timestamp created_at
-    }
-
-    JOURNAL_LINE {
-        uuid id PK
-        uuid journal_entry_id FK
-        uuid account_id FK
-        EntryType side "DEBIT, CREDIT"
-        bigint amount_minor
-    }
-
-    AUTHORIZATION_HOLD {
-        uuid id PK
-        uuid authorization_id UK
-        uuid merchant_id
-        string currency
-        bigint authorized_minor
-        bigint captured_minor "default 0"
-        bigint refunded_minor "default 0"
-        string status "ACTIVE, CAPTURED, EXPIRED"
-        timestamp created_at
-    }
-```
+See [`docs/diagrams/05-data-model.d2`](docs/diagrams/05-data-model.d2)
+</details>
 
 **Invariants enforced in code:**
 - `LED-001`: For every `JournalEntry`, `SUM(debits) = SUM(credits)`
@@ -295,26 +139,13 @@ erDiagram
 
 ### Concurrency — SERIALIZABLE + Retry
 
-```mermaid
-flowchart TD
-    Start(["capture() called"]) --> CheckIdem{"Idempotency key<br/>seen before?"}
-    CheckIdem -->|"yes"| ReturnExisting["Return cached result<br/>(exactly-once)"]
-    CheckIdem -->|"no"| BeginTx["BEGIN SERIALIZABLE"]
+![Concurrency - SERIALIZABLE + Retry](docs/diagrams/06-concurrency-retry.svg)
 
-    BeginTx --> ReadAuth["SELECT auth_hold<br/>FOR UPDATE"]
-    ReadAuth --> CheckBudget{"captured + amount<br/><= authorized?"}
-    CheckBudget -->|"no"| Rollback["ROLLBACK"]
-    Rollback --> ExceedsError["throw CaptureExceedsAuthorizationException"]
+<details>
+<summary>View D2 source</summary>
 
-    CheckBudget -->|"yes"| WriteEntry["INSERT journal_entry<br/>+ journal_lines<br/>+ outbox_event"]
-    WriteEntry --> Commit{"COMMIT"}
-    Commit -->|"success (40001 not thrown)"| ReturnSuccess["Return LedgerEntryResult"]
-
-    Commit -->|"40001 serialization conflict"| Retry{"attempts < maxRetries?"}
-    Retry -->|"yes"| Backoff["sleep backoffMs * 2^attempt<br/>(exponential)"]
-    Backoff --> BeginTx
-    Retry -->|"no"| Propagate["throw ConcurrencyFailureException<br/>(retried 10x, still contended)"]
-```
+See [`docs/diagrams/06-concurrency-retry.d2`](docs/diagrams/06-concurrency-retry.d2)
+</details>
 
 **Tested by:** `ConcurrentCaptureInvariantTest` — 20 threads, 10 succeed, 10 rejected, zero "other errors", ledger balanced.
 
@@ -382,41 +213,13 @@ These are the tests that make the repo stand out. Each is graded at a proof leve
 
 ## CI/CD Pipeline
 
-```mermaid
-graph LR
-    subgraph PR["Pull Request"]
-        BranchName["Branch Naming"]
-        PRLint["PR Lint<br/>Conventional Commits"]
-        Labeler["Labeler<br/>+ Size Labeler"]
-        AntiPattern["Anti-Pattern Scan<br/>(advisory)"]
-        Copilot["Copilot Review<br/>(advisory)"]
-    end
+![CI/CD Pipeline](docs/diagrams/07-cicd-pipeline.svg)
 
-    subgraph Gates["Blocking Gates"]
-        CI["CI<br/>Build + Test (JDK 25)"]
-        Migration["Migration Check<br/>6 Flyway checks"]
-        CodeQL["CodeQL<br/>static analysis"]
-    end
+<details>
+<summary>View D2 source</summary>
 
-    subgraph Release["Release"]
-        Squash["Squash Merge<br/>to main"]
-        ReleaseWF["release.yml<br/>auto-tag + GitHub Release"]
-        Stale["stale-branches.yml<br/>weekly cleanup"]
-        Dependabot["dependabot.yml<br/>weekly dependency PRs"]
-    end
-
-    BranchName --> CI
-    PRLint --> CI
-    Labeler --> CI
-    AntiPattern -.-> CI
-    Copilot -.-> CI
-    CI --> Migration
-    Migration --> CodeQL
-    CodeQL --> Squash
-    Squash --> ReleaseWF
-    ReleaseWF -.-> Stale
-    ReleaseWF -.-> Dependabot
-```
+See [`docs/diagrams/07-cicd-pipeline.d2`](docs/diagrams/07-cicd-pipeline.d2)
+</details>
 
 **12 workflows active.** See [`.github/CI-CD.md`](.github/CI-CD.md) for the full pipeline reference and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow.
 

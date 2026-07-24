@@ -1,0 +1,64 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 200
+  }
+}
+
+ACCOUNT: {
+  shape: class
+  style.fill: "#1a1a2e"
+  style.stroke: "#e94560"
+
+  id: uuid PK
+  code: string "e.g. ASSET_CASH, LIABILITY_PAYABLE"
+  type: AccountType "ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE"
+  currency: string "ISO 4217"
+  balance_minor: bigint "running balance in minor units"
+}
+
+JOURNAL_ENTRY: {
+  shape: class
+  style.fill: "#1a1a2e"
+  style.stroke: "#e94560"
+
+  id: uuid PK
+  authorization_id: uuid FK
+  type: EntryType "AUTHORIZATION, CAPTURE, REFUND"
+  currency: string
+  amount_minor: bigint
+  idempotency_key: string "UK - exactly-once"
+  created_at: timestamp
+}
+
+JOURNAL_LINE: {
+  shape: class
+  style.fill: "#1a1a2e"
+  style.stroke: "#e94560"
+
+  id: uuid PK
+  journal_entry_id: uuid FK
+  account_id: uuid FK
+  side: EntryType "DEBIT, CREDIT"
+  amount_minor: bigint
+}
+
+AUTHORIZATION_HOLD: {
+  shape: class
+  style.fill: "#1a1a2e"
+  style.stroke: "#e94560"
+
+  id: uuid PK
+  authorization_id: uuid UK
+  merchant_id: uuid
+  currency: string
+  authorized_minor: bigint
+  captured_minor: bigint "default 0"
+  refunded_minor: bigint "default 0"
+  status: string "ACTIVE, CAPTURED, EXPIRED"
+  created_at: timestamp
+}
+
+ACCOUNT -> JOURNAL_LINE: "posts to"
+JOURNAL_ENTRY -> JOURNAL_LINE: "contains"
+AUTHORIZATION_HOLD -> JOURNAL_ENTRY: "produces"

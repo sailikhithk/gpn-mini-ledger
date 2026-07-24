@@ -1,0 +1,36 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 200
+  }
+}
+
+Merchant: {shape: person; style.fill: "#1a1a2e"}
+"API Gateway": {style.fill: "#16213e"; style.stroke: "#e94560"}
+LedgerService: {style.fill: "#0f3460"; style.stroke: "#e94560"; style.stroke-width: 3}
+"PostgreSQL (SERIALIZABLE)": {shape: cylinder; style.fill: "#1a1a2e"; style.stroke: "#e94560"}
+"Outbox Worker": {style.fill: "#16213e"; style.stroke: "#e94560"}
+"Webhook (planned)": {style.fill: "#1a1a2e"; style.stroke-dash: 3}
+
+Merchant -> "API Gateway": "1. POST /capture {authId, amount, idempotencyKey}"
+"API Gateway" -> "API Gateway": "2. Validate + rate limit"
+
+"API Gateway" -> LedgerService: "3. capture(idempotencyKey, authId, amount)"
+
+LedgerService -> "PostgreSQL (SERIALIZABLE)": "4. BEGIN ISOLATION SERIALIZABLE"
+LedgerService -> "PostgreSQL (SERIALIZABLE)": "5. SELECT auth_hold FOR UPDATE"
+LedgerService -> "PostgreSQL (SERIALIZABLE)": "6. CHECK: captured + amount <= authorized"
+
+LedgerService -> "PostgreSQL (SERIALIZABLE)": "7. INSERT journal_entry + journal_lines + outbox_event"
+LedgerService -> "PostgreSQL (SERIALIZABLE)": "8. COMMIT"
+
+"PostgreSQL (SERIALIZABLE)" -> LedgerService: "9. 40001 serialization conflict (retry up to 10x)"
+
+LedgerService -> "API Gateway": "10. LedgerEntryResult"
+"API Gateway" -> Merchant: "11. 200 OK {entryId, capturedMinor}"
+
+"Outbox Worker" -> "PostgreSQL (SERIALIZABLE)": "12. SELECT ... FOR UPDATE SKIP LOCKED"
+"PostgreSQL (SERIALIZABLE)" -> "Outbox Worker": "13. claimed events"
+"Outbox Worker" -> "Webhook (planned)": "14. POST event (HMAC signed)"
+"Webhook (planned)" -> "Outbox Worker": "15. 200 OK"
+"Outbox Worker" -> "PostgreSQL (SERIALIZABLE)": "16. UPDATE outbox SET published = true"
