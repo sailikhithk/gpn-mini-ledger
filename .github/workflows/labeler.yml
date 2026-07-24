@@ -1,5 +1,5 @@
 # W3: File-based + branch-based PR labeling
-# Uses actions/labeler@v6 with .github/labeler.yml config (v5/v6 schema).
+# Uses actions/labeler@v7 with .github/labeler.yml config (v5/v6 schema).
 # Mirrors the DMS pipeline's W3 hygiene workflow.
 name: PR Labeler
 
@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Apply file-based + branch-based labels
-        uses: actions/labeler@v6
+        uses: actions/labeler@v7
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml
