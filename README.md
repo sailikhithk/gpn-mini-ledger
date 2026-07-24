@@ -32,7 +32,6 @@
 - [CI/CD Pipeline](#-cicd-pipeline)
 - [Project Structure](#-project-structure)
 - [Documentation](#-documentation)
-- [Interview Citation](#-interview-citation)
 - [License](#-license)
 
 ---
@@ -265,25 +264,10 @@ gpn-mini-ledger/
 
 ---
 
-## Interview Citation
-
-> *"I built a minimal version of this. It is on my GitHub at
-> [github.com/sailikhithk/gpn-mini-ledger](https://github.com/sailikhithk/gpn-mini-ledger).
-> The core ledger uses SERIALIZABLE isolation with a balance invariant test under
-> 20-thread contention. The idempotency layer is two-tier, Redis fast path plus
-> Postgres durable, with SHA-256 fingerprinting. The outbox uses `SKIP LOCKED` claim
-> with stale claim reclaim. The audit log is a SHA-256 hash chain with PostgreSQL
-> advisory locks. All 5 invariant tests pass. You can clone it and run
-> `./mvnw verify` in 10 minutes."*
-
-This is a different conversation than someone who only read about the patterns.
-
----
-
 ## License
 
 [MIT](LICENSE) — see the [LICENSE](LICENSE) file for details.
 
 ---
 
-<sub>Built by [Sai Likhith Kanuparthi](https://github.com/sailikhithk) as a citable reference for Capital One GPN system design interviews.</sub>
+<sub>Built by [Sai Likhith Kanuparthi](https://github.com/sailikhithk).</sub>
