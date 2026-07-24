@@ -1,125 +1,226 @@
 """
 Generate all architecture diagrams for GPN Mini Ledger README.
 Uses the Python `diagrams` package (mingrammer/diagrams) with AWS + on-prem icons.
-Outputs PNG files in docs/diagrams/.
+
+Layout strategy:
+- direction="TB" for all diagrams so clusters become horizontal rows stacked vertically.
+- Within each cluster, nodes are ordered left-to-right using invisible `constraint="false"` edges.
+- This produces clean, square-ish diagrams that look like a human drew them.
 """
 import os
+from diagrams import Diagram, Cluster, Edge
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "diagrams")
 os.makedirs(OUT_DIR, exist_ok=True)
 
-GRAPH_ATTR = {
-    "bgcolor": "white",
-    "fontcolor": "#1f2328",
-    "fontsize": "14",
-    "pad": "0.5",
-    "ranksep": "1.0",
-    "nodesep": "0.8",
-}
+
+def graph_attrs(size: str = "10,10") -> dict:
+    return {
+        "bgcolor": "white",
+        "fontcolor": "#1f2328",
+        "fontsize": "14",
+        "pad": "0.3",
+        "ranksep": "1.0",
+        "nodesep": "0.7",
+        "splines": "ortho",
+        "compound": "true",
+        "ratio": "fill",
+        "dpi": "130",
+        "size": size,
+    }
+
 
 NODE_ATTR = {
     "fontcolor": "#1f2328",
-    "fontsize": "12",
+    "fontsize": "11",
 }
 
 
+def hrow(nodes):
+    """Arrange nodes left-to-right in the same rank without drawing visible edges."""
+    for i in range(len(nodes) - 1):
+        nodes[i] >> Edge(style="invis", constraint="false") >> nodes[i + 1]
+
+
+def vlink(src, dst, label=None, style="solid"):
+    """Visible vertical link between layers/clusters."""
+    kwargs = {"style": style}
+    if label:
+        kwargs["label"] = label
+    src >> Edge(**kwargs) >> dst
+
+
+def layer_link(src, dst, src_cluster, dst_cluster, label=None, style="dashed"):
+    """Draw an arrow clipped to the boundaries of two clusters."""
+    kwargs = {
+        "style": style,
+        "ltail": f"cluster_{src_cluster}",
+        "lhead": f"cluster_{dst_cluster}",
+    }
+    if label:
+        kwargs["label"] = label
+    src >> Edge(**kwargs) >> dst
+
+
+def snake_row(cluster_name, node_makers):
+    """
+    Create a row of nodes inside a Cluster that reads left-to-right.
+    node_makers is a list of callables that return a node instance.
+    Returns the list of created nodes.
+    """
+    nodes = []
+    with Cluster(cluster_name):
+        for make_node in node_makers:
+            nodes.append(make_node())
+    # order left-to-right (invisible, non-constraining)
+    for i in range(len(nodes) - 1):
+        nodes[i] >> Edge(style="invis", constraint="false") >> nodes[i + 1]
+    return nodes
+
+
+def snake_arrows(nodes):
+    """Draw visible horizontal arrows across a row without changing rank."""
+    for i in range(len(nodes) - 1):
+        nodes[i] >> Edge(constraint="false") >> nodes[i + 1]
+
+
+def snake_drop(prev_left, next_left, prev_right, next_right, label=None):
+    """
+    Align two rows vertically and draw a flow arrow from the end of the
+    previous row to the start of the next row.
+    """
+    prev_left >> Edge(style="invis") >> next_left
+    kwargs = {"constraint": "false"}
+    if label:
+        kwargs["label"] = label
+    prev_right >> Edge(**kwargs) >> next_right
+
+
+# ------------------------------------------------------------------------------
+# 01. System Context
+# ------------------------------------------------------------------------------
 def diagram_01_system_context():
-    from diagrams import Diagram, Cluster, Edge
-    from diagrams.onprem.client import Users, Client
-    from diagrams.onprem.compute import Server
+    from diagrams.onprem.client import Client, Users
+    from diagrams.aws.network import APIGateway
+    from diagrams.programming.framework import Spring
+    from diagrams.aws.integration import SQS
     from diagrams.onprem.database import PostgreSQL
     from diagrams.onprem.inmemory import Redis
-    from diagrams.aws.network import APIGateway
     from diagrams.aws.storage import S3
 
     with Diagram(
         "System Context",
         filename=os.path.join(OUT_DIR, "01-system-context"),
         show=False,
-        direction="TB",
-        graph_attr=GRAPH_ATTR,
+        direction="LR",
+        graph_attr=graph_attrs(size="14,8"),
         node_attr=NODE_ATTR,
     ):
-        merchant = Client("Merchant")
-        cardholder = Client("Cardholder")
-        interviewer = Users("Capital One\nInterviewer")
+        with Cluster("External Actors"):
+            cardholder = Client("Cardholder")
+            merchant = Client("Merchant")
+            interviewer = Users("Capital One\nInterviewer")
+            hrow([cardholder, merchant, interviewer])
 
         with Cluster("GPN Mini Ledger"):
             gateway = APIGateway("API Gateway\n(Edge Switch)")
-            ledger = Server("Ledger Core\n(CP - Strong Consistency)")
-            outbox = Server("Outbox Worker\n(BASE - Eventual)")
+            ledger = Spring("Ledger Core\n(CP - Strong Consistency)")
+            outbox = SQS("Outbox Worker\n(BASE - Eventual)")
+            hrow([gateway, ledger, outbox])
 
         with Cluster("Local Infrastructure (Docker)"):
             postgres = PostgreSQL("PostgreSQL 16\nSERIALIZABLE + Flyway")
             redis = Redis("Redis 7\nIdempotency cache")
-            localstack = S3("LocalStack\nS3 - SQS - DynamoDB")
+            localstack = S3("LocalStack\nS3 / SQS / DynamoDB")
+            hrow([postgres, redis, localstack])
 
         cardholder >> Edge(label="payment") >> merchant
         merchant >> Edge(label="authorize / capture / refund") >> gateway
         gateway >> Edge(label="ledger write") >> ledger
         ledger >> Edge(label="publish event") >> outbox
-        ledger >> postgres
-        gateway >> redis
-        outbox >> postgres
-        outbox >> localstack
-        interviewer >> Edge(style="dashed", label="clone + verify") >> ledger
+
+        ledger >> Edge(style="dashed") >> postgres
+        gateway >> Edge(style="dashed") >> redis
+        outbox >> Edge(style="dashed") >> postgres
+        outbox >> Edge(style="dashed") >> localstack
+        interviewer >> Edge(style="dotted", label="clone + verify") >> ledger
 
 
+# ------------------------------------------------------------------------------
+# 02. Layered Priority Stack
+# ------------------------------------------------------------------------------
 def diagram_02_layered_priority_stack():
-    from diagrams import Diagram, Cluster, Edge
-    from diagrams.onprem.compute import Server
+    from diagrams.programming.framework import Spring
+    from diagrams.onprem.database import PostgreSQL
+    from diagrams.aws.network import APIGateway
+    from diagrams.onprem.inmemory import Redis
+    from diagrams.aws.security import Shield
+    from diagrams.aws.integration import SQS
+    from diagrams.aws.storage import S3
 
     with Diagram(
         "Layered Priority Stack",
         filename=os.path.join(OUT_DIR, "02-layered-priority-stack"),
         show=False,
-        direction="LR",
-        graph_attr=GRAPH_ATTR,
+        direction="TB",
+        graph_attr=graph_attrs(size="10,10"),
         node_attr=NODE_ATTR,
     ):
         with Cluster("Layer 1 - Core Ledger (CP)"):
-            l1 = [
-                Server("Correctness"),
-                Server("Durability"),
-                Server("Consistency"),
-                Server("Auditability"),
-                Server("Availability"),
+            core = [
+                Spring("Correctness"),
+                PostgreSQL("Durability"),
+                Spring("Consistency"),
+                Shield("Auditability"),
+                Spring("Availability"),
             ]
-            for i in range(len(l1) - 1):
-                l1[i] >> l1[i + 1]
+            hrow(core)
 
         with Cluster("Layer 2 - Edge Switch (AP)"):
-            l2 = [
-                Server("Latency"),
-                Server("Availability (AP)"),
-                Server("Idempotency"),
-                Server("Fail-safe"),
+            edge = [
+                APIGateway("Latency"),
+                APIGateway("Availability (AP)"),
+                Redis("Idempotency"),
+                Shield("Fail-safe"),
             ]
-            for i in range(len(l2) - 1):
-                l2[i] >> l2[i + 1]
+            hrow(edge)
 
         with Cluster("Layer 3 - Async Lane (BASE)"):
-            l3 = [
-                Server("Throughput"),
-                Server("Durability (BASE)"),
-                Server("At-least-once"),
-                Server("Reconciliation"),
+            async_ = [
+                SQS("Throughput"),
+                S3("Durability (BASE)"),
+                SQS("At-least-once"),
+                Spring("Reconciliation"),
             ]
-            for i in range(len(l3) - 1):
-                l3[i] >> l3[i + 1]
+            hrow(async_)
 
-        l1[-1] >> Edge(label="wins on conflict", style="dashed") >> l2[0]
-        l2[-1] >> Edge(label="wins on conflict", style="dashed") >> l3[0]
+        # Connect layer boundaries so the arrow reads as whole-layer priority
+        layer_link(
+            core[0],
+            edge[0],
+            "Layer 1 - Core Ledger (CP)",
+            "Layer 2 - Edge Switch (AP)",
+            label="wins on conflict",
+        )
+        layer_link(
+            edge[0],
+            async_[0],
+            "Layer 2 - Edge Switch (AP)",
+            "Layer 3 - Async Lane (BASE)",
+            label="wins on conflict",
+        )
 
 
+# ------------------------------------------------------------------------------
+# 03. Module Map
+# ------------------------------------------------------------------------------
 def diagram_03_module_map():
-    from diagrams import Diagram, Cluster, Edge
-    from diagrams.onprem.compute import Server
-    from diagrams.onprem.database import PostgreSQL
-    from diagrams.onprem.inmemory import Redis
+    from diagrams.programming.framework import Spring
     from diagrams.aws.network import APIGateway
+    from diagrams.onprem.inmemory import Redis
+    from diagrams.aws.security import Shield, KMS
     from diagrams.aws.integration import SQS, SNS
-    from diagrams.aws.security import KMS
+    from diagrams.onprem.database import PostgreSQL
     from diagrams.aws.storage import S3
 
     with Diagram(
@@ -127,28 +228,32 @@ def diagram_03_module_map():
         filename=os.path.join(OUT_DIR, "03-module-map"),
         show=False,
         direction="TB",
-        graph_attr=GRAPH_ATTR,
+        graph_attr=graph_attrs(size="12,11"),
         node_attr=NODE_ATTR,
     ):
         with Cluster("Layer 1 - Core Ledger"):
-            ledger_core = Server("ledger-core\nLedgerService - JournalEntry\nAccount - AuthorizationHold")
-            audit_chain = KMS("audit-chain (planned)\nSHA-256 hash chain")
+            ledger_core = Spring("ledger-core\nLedgerService")
+            audit_chain = KMS("audit-chain\n(planned)")
+            hrow([ledger_core, audit_chain])
 
         with Cluster("Layer 2 - Edge Switch"):
-            api_gateway = APIGateway("api-gateway\nRequest routing\nRate limiting")
-            idempotency = Server("idempotency (planned)\nRedis + Postgres\ntwo-layer")
-            orchestrator = Server("orchestrator (planned)\nPaymentSaga\ncompensation")
-            fraud = Server("fraud-degradation (planned)\nfail-safe (not fail-open)")
+            api_gateway = APIGateway("api-gateway")
+            idempotency = Redis("idempotency\n(planned)")
+            orchestrator = Spring("orchestrator\n(planned)")
+            fraud = Shield("fraud-degradation\n(planned)")
+            hrow([api_gateway, idempotency, orchestrator, fraud])
 
         with Cluster("Layer 3 - Async Lane"):
-            outbox = SQS("outbox\nSKIP LOCKED claim\nstale reclaim")
-            reconciliation = Server("reconciliation (planned)\nfingerprinted dedup")
-            webhook = SNS("webhook (planned)\nHMAC + replay protection")
+            outbox = SQS("outbox\nSKIP LOCKED")
+            webhook = SNS("webhook\n(planned)")
+            reconciliation = Spring("reconciliation\n(planned)")
+            hrow([outbox, webhook, reconciliation])
 
         with Cluster("Data Stores"):
             postgres = PostgreSQL("PostgreSQL 16")
             redis = Redis("Redis 7")
             s3 = S3("LocalStack S3")
+            hrow([postgres, redis, s3])
 
         api_gateway >> ledger_core
         api_gateway >> idempotency
@@ -165,76 +270,86 @@ def diagram_03_module_map():
         reconciliation >> postgres
 
 
+# ------------------------------------------------------------------------------
+# 04. Request Flow - Capture Sequence
+# ------------------------------------------------------------------------------
 def diagram_04_request_flow():
-    from diagrams import Diagram, Cluster, Edge
     from diagrams.onprem.client import Client
-    from diagrams.onprem.compute import Server
-    from diagrams.onprem.database import PostgreSQL
     from diagrams.aws.network import APIGateway
-    from diagrams.aws.integration import SNS
+    from diagrams.programming.framework import Spring
+    from diagrams.onprem.database import PostgreSQL
+    from diagrams.aws.integration import SQS, SNS
 
     with Diagram(
         "Request Flow - Capture Sequence",
         filename=os.path.join(OUT_DIR, "04-request-flow"),
         show=False,
         direction="TB",
-        graph_attr=GRAPH_ATTR,
+        graph_attr=graph_attrs(size="12,8"),
         node_attr=NODE_ATTR,
     ):
-        merchant = Client("Merchant")
-        gateway = APIGateway("API Gateway")
-        ledger = Server("LedgerService")
-        postgres = PostgreSQL("PostgreSQL\n(SERIALIZABLE)")
-        outbox = Server("Outbox Worker")
-        webhook = SNS("Webhook (planned)")
+        # Row 1: Requester -> Edge Switch -> Core -> Database
+        row1 = snake_row("1. Receive & Validate", [
+            lambda: Client("Merchant"),
+            lambda: APIGateway("API Gateway\n(Edge Switch)"),
+            lambda: Spring("LedgerService\n(CP Core)"),
+            lambda: PostgreSQL("PostgreSQL\nSERIALIZABLE"),
+        ])
+        snake_arrows(row1)
 
-        merchant >> Edge(label="1. POST /capture") >> gateway
-        gateway >> Edge(label="2. Validate") >> gateway
-        gateway >> Edge(label="3. capture()") >> ledger
+        # Row 2: Publish -> Outbox -> Webhook -> 200 OK
+        row2 = snake_row("2. Persist & Dispatch", [
+            lambda: PostgreSQL("COMMIT"),
+            lambda: SQS("Outbox Worker"),
+            lambda: SNS("Webhook"),
+            lambda: Client("200 OK"),
+        ])
+        snake_arrows(row2)
 
-        with Cluster("Layer 1 - CP (strong consistency)"):
-            ledger >> Edge(label="4. BEGIN SERIALIZABLE") >> postgres
-            ledger >> Edge(label="5. SELECT auth_hold FOR UPDATE") >> postgres
-            ledger >> Edge(label="6. CHECK: captured + amount <= authorized") >> postgres
-            ledger >> Edge(label="7. INSERT journal_entry + lines + outbox_event") >> postgres
-            ledger >> Edge(label="8. COMMIT") >> postgres
-            postgres >> Edge(label="9. 40001 conflict (retry 10x)", style="dashed") >> ledger
+        # Vertical drop from end of row 1 to start of row 2
+        snake_drop(row1[0], row2[0], row1[-1], row2[0], label="publish event")
 
-        ledger >> Edge(label="10. LedgerEntryResult") >> gateway
-        gateway >> Edge(label="11. 200 OK") >> merchant
-
-        with Cluster("Layer 3 - BASE (eventual)"):
-            outbox >> Edge(label="12. SELECT SKIP LOCKED") >> postgres
-            postgres >> Edge(label="13. claimed events") >> outbox
-            outbox >> Edge(label="14. POST event (HMAC)") >> webhook
-            webhook >> Edge(label="15. 200 OK") >> outbox
-            outbox >> Edge(label="16. UPDATE published = true") >> postgres
+        # Retry loop: PostgreSQL detects conflict -> LedgerService retries
+        row1[-1] >> Edge(label="40001 conflict\nretry 10x", style="dashed", constraint="false") >> row1[2]
+        # 200 OK response path
+        row2[2] >> Edge(label="200 OK", style="dotted", constraint="false") >> row2[-1]
 
 
+# ------------------------------------------------------------------------------
+# 05. Data Model ERD
+# ------------------------------------------------------------------------------
 def diagram_05_data_model():
-    from diagrams import Diagram, Edge
     from diagrams.onprem.database import PostgreSQL
 
     with Diagram(
         "Data Model ERD",
         filename=os.path.join(OUT_DIR, "05-data-model"),
         show=False,
-        direction="LR",
-        graph_attr=GRAPH_ATTR,
+        direction="TB",
+        graph_attr=graph_attrs(size="10,9"),
         node_attr=NODE_ATTR,
     ):
-        account = PostgreSQL("ACCOUNT\nid: uuid PK\ncode: string\ntype: AccountType\ncurrency: string\nbalance_minor: bigint")
-        journal_entry = PostgreSQL("JOURNAL_ENTRY\nid: uuid PK\nauthorization_id: uuid FK\ntype: EntryType\ncurrency: string\namount_minor: bigint\nidempotency_key: string UK\ncreated_at: timestamp")
-        journal_line = PostgreSQL("JOURNAL_LINE\nid: uuid PK\njournal_entry_id: uuid FK\naccount_id: uuid FK\nside: DEBIT/CREDIT\namount_minor: bigint")
-        auth_hold = PostgreSQL("AUTHORIZATION_HOLD\nid: uuid PK\nauthorization_id: uuid UK\nmerchant_id: uuid\ncurrency: string\nauthorized_minor: bigint\ncaptured_minor: bigint\nrefunded_minor: bigint\nstatus: string\ncreated_at: timestamp")
+        with Cluster("Core Entities"):
+            account = PostgreSQL("ACCOUNT\nPK: id, UK: code\nbalance_minor, type, currency")
+            journal_entry = PostgreSQL("JOURNAL_ENTRY\nPK: id, UK: idempotency_key\ncurrency, amount_minor, created_at")
+            hrow([account, journal_entry])
 
-        account >> Edge(label="posts to") >> journal_line
+        with Cluster("Lines and Holds"):
+            journal_line = PostgreSQL("JOURNAL_LINE\nPK: id, FK: entry_id, account_id\nside, amount_minor")
+            auth_hold = PostgreSQL("AUTHORIZATION_HOLD\nPK: id, UK: authorization_id\nauthorized / captured / refunded, status, currency")
+            hrow([journal_line, auth_hold])
+
         journal_entry >> Edge(label="contains") >> journal_line
+        account >> Edge(label="posts to") >> journal_line
         auth_hold >> Edge(label="produces") >> journal_entry
 
 
+# ------------------------------------------------------------------------------
+# 06. Concurrency - SERIALIZABLE + Retry
+# ------------------------------------------------------------------------------
 def diagram_06_concurrency_retry():
-    from diagrams import Diagram, Edge
+    from diagrams.programming.framework import Spring
+    from diagrams.onprem.database import PostgreSQL
     from diagrams.onprem.compute import Server
 
     with Diagram(
@@ -242,85 +357,101 @@ def diagram_06_concurrency_retry():
         filename=os.path.join(OUT_DIR, "06-concurrency-retry"),
         show=False,
         direction="TB",
-        graph_attr=GRAPH_ATTR,
+        graph_attr=graph_attrs(size="12,10"),
         node_attr=NODE_ATTR,
     ):
-        start = Server("capture() called")
-        check_idem = Server("Idempotency key\nseen before?")
-        return_existing = Server("Return cached result\n(exactly-once)")
-        begin_tx = Server("BEGIN SERIALIZABLE")
-        read_auth = Server("SELECT auth_hold\nFOR UPDATE")
-        check_budget = Server("captured + amount\n<= authorized?")
-        rollback = Server("ROLLBACK")
-        exceeds_error = Server("throw\nCaptureExceedsAuthorizationException")
-        write_entry = Server("INSERT journal_entry\n+ journal_lines\n+ outbox_event")
-        commit = Server("COMMIT")
-        return_success = Server("Return LedgerEntryResult")
-        retry = Server("attempts < maxRetries?")
-        backoff = Server("sleep backoffMs * 2^attempt\n(exponential)")
-        propagate = Server("throw ConcurrencyFailureException\n(retried 10x, still contended)")
+        # Row 1: capture -> idempotency check -> begin tx
+        row1 = snake_row("1. Start & Idempotency", [
+            lambda: Spring("capture() called"),
+            lambda: Server("idempotency key\nseen before?"),
+            lambda: PostgreSQL("BEGIN\nSERIALIZABLE"),
+        ])
+        snake_arrows(row1)
 
-        start >> check_idem
-        check_idem >> Edge(label="yes") >> return_existing
-        check_idem >> Edge(label="no") >> begin_tx
-        begin_tx >> read_auth
-        read_auth >> check_budget
-        check_budget >> Edge(label="no") >> rollback
-        rollback >> exceeds_error
-        check_budget >> Edge(label="yes") >> write_entry
-        write_entry >> commit
-        commit >> Edge(label="success") >> return_success
-        commit >> Edge(label="40001 conflict") >> retry
-        retry >> Edge(label="yes") >> backoff
-        backoff >> begin_tx
-        retry >> Edge(label="no") >> propagate
+        # Row 2: SELECT auth_hold -> check budget -> INSERT
+        row2 = snake_row("2. Core Transaction", [
+            lambda: PostgreSQL("SELECT auth_hold\nFOR UPDATE"),
+            lambda: Server("captured + amount\n<= authorized?"),
+            lambda: PostgreSQL("INSERT entry +\nlines + outbox_event"),
+        ])
+        snake_arrows(row2)
+
+        # Row 3: COMMIT -> success
+        row3 = snake_row("3. Commit", [
+            lambda: PostgreSQL("COMMIT"),
+            lambda: Spring("return\nLedgerEntryResult"),
+        ])
+        snake_arrows(row3)
+
+        # Vertical drops
+        snake_drop(row1[0], row2[0], row1[-1], row2[0])
+        snake_drop(row2[0], row3[0], row2[-1], row3[0])
+
+        # Branches
+        cached = Spring("return cached\nresult")
+        exceeds = Spring("throw\nCaptureExceedsAuthException")
+        retry = Spring("retry 10x\nexponential backoff")
+
+        row1[1] >> Edge(xlabel="yes", style="dashed", constraint="false") >> cached
+        row1[1] >> Edge(xlabel="no", style="dashed", constraint="false") >> row1[2]
+
+        row2[1] >> Edge(xlabel="no", style="dashed", constraint="false") >> exceeds
+        row2[1] >> Edge(xlabel="yes", style="dashed", constraint="false") >> row2[2]
+
+        row3[0] >> Edge(xlabel="40001 conflict", style="dashed", constraint="false") >> retry
+        retry >> Edge(style="dashed", constraint="false") >> row1[2]
 
 
+# ------------------------------------------------------------------------------
+# 07. CI/CD Pipeline
+# ------------------------------------------------------------------------------
 def diagram_07_cicd_pipeline():
-    from diagrams import Diagram, Cluster, Edge
     from diagrams.onprem.compute import Server
     from diagrams.onprem.vcs import Git
+    from diagrams.onprem.database import PostgreSQL
     from diagrams.aws.devtools import Codebuild
     from diagrams.aws.security import Shield
+    from diagrams.onprem.ci import GithubActions
 
     with Diagram(
         "CI/CD Pipeline",
         filename=os.path.join(OUT_DIR, "07-cicd-pipeline"),
         show=False,
-        direction="LR",
-        graph_attr=GRAPH_ATTR,
+        direction="TB",
+        graph_attr=graph_attrs(size="14,9"),
         node_attr=NODE_ATTR,
     ):
-        with Cluster("Pull Request"):
-            branch = Server("Branch Naming")
-            pr_lint = Server("PR Lint\nConventional Commits")
-            labeler = Server("Labeler\n+ Size Labeler")
-            anti_pattern = Server("Anti-Pattern Scan\n(advisory)")
-            copilot = Server("Copilot Review\n(advisory)")
+        # Row 1: PR gates (all feed into CI)
+        row1 = snake_row("1. Pull Request", [
+            lambda: Git("Branch\nNaming"),
+            lambda: GithubActions("PR Lint\nConventional Commits"),
+            lambda: GithubActions("Labeler +\nSize Labeler"),
+            lambda: GithubActions("Anti-Pattern\nScan (advisory)"),
+            lambda: GithubActions("Copilot Review\n(advisory)"),
+        ])
 
-        with Cluster("Blocking Gates"):
-            ci = Codebuild("CI\nBuild + Test (JDK 25)")
-            migration = Server("Migration Check\n6 Flyway checks")
-            codeql = Shield("CodeQL\nstatic analysis")
+        # Row 2: Blocking gates
+        row2 = snake_row("2. Blocking Gates", [
+            lambda: Codebuild("CI\nBuild + Test"),
+            lambda: PostgreSQL("Migration\nCheck"),
+            lambda: Shield("CodeQL\nStatic Analysis"),
+            lambda: Git("Squash Merge\nto main"),
+        ])
+        snake_arrows(row2)
 
-        with Cluster("Release"):
-            squash = Git("Squash Merge\nto main")
-            release_wf = Server("release.yml\nauto-tag + GitHub Release")
-            stale = Server("stale-branches.yml\nweekly cleanup")
-            dependabot = Server("dependabot.yml\nweekly dependency PRs")
+        # Row 3: Release workflows
+        row3 = snake_row("3. Release", [
+            lambda: GithubActions("release.yml"),
+            lambda: GithubActions("stale-branches.yml"),
+            lambda: GithubActions("dependabot.yml"),
+        ])
+        # stale/dependabot are parallel, not sequential
+        row3[0] >> Edge(style="dashed", constraint="false") >> row3[1]
+        row3[0] >> Edge(style="dashed", constraint="false") >> row3[2]
 
-        branch >> ci
-        pr_lint >> ci
-        labeler >> ci
-        anti_pattern >> Edge(style="dashed") >> ci
-        copilot >> Edge(style="dashed") >> ci
-
-        ci >> migration
-        migration >> codeql
-        codeql >> squash
-        squash >> release_wf
-        release_wf >> Edge(style="dashed") >> stale
-        release_wf >> Edge(style="dashed") >> dependabot
+        # Vertical drops align rows
+        snake_drop(row1[0], row2[0], row1[-1], row2[0])
+        snake_drop(row2[0], row3[0], row2[-1], row3[1], label="tag & release")
 
 
 if __name__ == "__main__":
