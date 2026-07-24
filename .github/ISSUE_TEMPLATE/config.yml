@@ -1,0 +1,9 @@
+# Disable blank issues — force users to use a template
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/sailikhithk/gpn-mini-ledger/security/advisories/new
+    about: Report security vulnerabilities privately via GitHub Security Advisory. Do NOT open a public issue.
+  - name: Questions & Discussions
+    url: https://github.com/sailikhithk/gpn-mini-ledger/discussions
+    about: Ask questions and start discussions in GitHub Discussions.

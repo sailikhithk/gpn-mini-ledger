@@ -8,12 +8,16 @@ This project mirrors the DMS (Dose Management System) pipeline pattern: hygiene 
 | -------------------- | -------- | ------------------------ | ---------------------------------------------------- |
 | `ci.yml`             | Gate 3-5 | push, PR                 | Compile + test + package (JDK 25, Maven)             |
 | `pr-lint.yml`        | W1       | PR opened/edited         | PR title Conventional Commits format + non-empty body|
+| `branch-naming.yml`  | Gate 1   | PR opened/edited         | Branch name `type/description` validation            |
 | `migration-check.yml`| Gate 2   | PR/push on migrations    | 6 Flyway checks: naming, sequencing, idempotency,    |
 |                      |          |                          | dollar-quoting, append-only, conditional roles       |
-| `labeler.yml`        | W3       | PR opened/synchronize    | File-based + size labels on PRs                      |
+| `labeler.yml`        | W3       | PR opened/synchronize    | File-based + branch-based labels (actions/labeler@v6)|
+| `size-labeler.yml`   | W4       | PR opened/synchronize    | Size label (xs/s/m/l/xl) by lines changed            |
 | `copilot-review.yml` | AI-assist| PR opened/reopened       | Auto-request Copilot code review (advisory)          |
+| `anti-pattern-scan.yml`| AI-assist| PR on Java files        | Grep for DMS P1-P7 anti-patterns (advisory comment)  |
 | `codeql.yml`         | Security | push, PR, weekly cron    | GitHub CodeQL static analysis for Java               |
 | `release.yml`        | Release  | push to main (CHANGELOG) | Auto-tag + GitHub Release on CHANGELOG version bump  |
+| `stale-branches.yml` | Hygiene  | weekly cron              | Delete merged branches older than 30 days            |
 
 ## Pre-commit Hooks
 
@@ -70,9 +74,18 @@ All must pass before merge:
 | `CI / Build + Test (JDK 25)`           | `ci.yml`             |
 | `PR Lint / Validate PR title`          | `pr-lint.yml`        |
 | `PR Lint / Validate PR description`    | `pr-lint.yml`        |
+| `Branch Naming / Validate branch name` | `branch-naming.yml`  |
 | `Migration Check / Validate migrations`| `migration-check.yml`|
 | `CodeQL / Analyze (Java)`              | `codeql.yml`         |
-| `PR Labeler / Apply file-based labels` | `labeler.yml`        |
+| `PR Labeler / Apply labels`            | `labeler.yml`        |
+| `PR Size Labeler / Apply size label`   | `size-labeler.yml`   |
+
+### Advisory (Non-Blocking)
+
+| Check                                  | Workflow                 |
+| -------------------------------------- | ------------------------ |
+| `Anti-Pattern Scan / Grep anti-patterns`| `anti-pattern-scan.yml` |
+| `Copilot Review`                       | `copilot-review.yml`    |
 
 ### Merge Rules
 

@@ -1,0 +1,54 @@
+# Stale branch cleanup — weekly cron
+# Deletes branches that have been merged into main and are older than 30 days.
+# Mirrors the DMS pipeline's branch cleanup hygiene workflow.
+name: Stale Branch Cleanup
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # Weekly on Monday 08:00 UTC
+  workflow_dispatch:        # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    name: Delete stale merged branches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find and delete stale branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Finding branches merged into main, older than 30 days..."
+          STALE_DAYS=30
+          CUTOFF=$(date -u -d "$STALE_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-${STALE_DAYS}d +%Y-%m-%dT%H:%M:%SZ)
+          echo "Cutoff date: $CUTOFF"
+
+          # Get all branches (excluding main, release/*)
+          BRANCHES=$(git branch -r --merged origin/main | grep -v 'main$' | grep -v 'release/' | grep -v 'HEAD ->' | sed 's|origin/||' | tr -d ' ')
+
+          if [ -z "$BRANCHES" ]; then
+            echo "No stale merged branches found."
+            exit 0
+          fi
+
+          for branch in $BRANCHES; do
+            # Get last commit date on the branch
+            LAST_COMMIT=$(git log -1 --format=%cI "origin/$branch")
+            if [ "$LAST_COMMIT" \< "$CUTOFF" ]; then
+              echo "Deleting stale branch: $branch (last commit: $LAST_COMMIT)"
+              git push origin --delete "$branch" || echo "  (could not delete — may be protected)"
+            else
+              echo "Keeping: $branch (last commit: $LAST_COMMIT)"
+            fi
+          done
+
+      - name: Summary
+        run: echo "Stale branch cleanup complete."

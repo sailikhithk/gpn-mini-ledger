@@ -1,0 +1,126 @@
+# Anti-pattern grep — DMS-style Java anti-pattern detection
+# Mirrors the DMS pipeline's P1-P7 anti-pattern scan.
+# Non-blocking (advisory) — comments on the PR with findings.
+name: Anti-Pattern Scan
+
+on:
+  pull_request:
+    paths:
+      - '**/*.java'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan:
+    name: Grep for known anti-patterns
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed Java files
+        id: files
+        run: |
+          FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.java' | tr '\n' ' ')
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          echo "Changed Java files: $FILES"
+
+      - name: Scan for anti-patterns
+        id: scan
+        run: |
+          FILES="${{ steps.files.outputs.files }}"
+          if [ -z "$FILES" ]; then
+            echo "No Java files changed — skipping scan."
+            echo "findings=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FINDINGS=""
+
+          # P1: Hardcoded "SYSTEM" as createdBy/changedBy (DMS P1 — 6 production tickets)
+          if grep -rn '"SYSTEM"' $FILES 2>/dev/null | grep -iE 'createdBy|changedBy|setCreatedBy|setChangedBy'; then
+            FINDINGS="${FINDINGS}\n### P1 — Hardcoded \"SYSTEM\" as audit user\n\`\`\`\n$(grep -n '"SYSTEM"' $FILES | grep -iE 'createdBy|changedBy' | head -5)\n\`\`\`\nUse SecurityUtils.getCurrentUserId() instead. Only acceptable in Flyway migrations.\n"
+          fi
+
+          # P3: setChangedBy/setChangedOn outside isDataChanged gate
+          if grep -n 'setChangedBy\|setChangedOn' $FILES 2>/dev/null | grep -v 'isDataChanged'; then
+            FINDINGS="${FINDINGS}\n### P3 — Audit stamps may be outside isDataChanged() gate\nReview: setChangedBy/setChangedOn should only be called inside the isDataChanged() block.\n"
+          fi
+
+          # P5: isDataChanged called AFTER setters (compare-before-mutate)
+          if grep -B2 'isDataChanged' $FILES 2>/dev/null | grep -E 'setName|set[A-Z]'; then
+            FINDINGS="${FINDINGS}\n### P5 — isDataChanged() called AFTER setters\nisDataChanged() must be called BEFORE mutating the entity. Otherwise it always returns false.\n"
+          fi
+
+          # Q68: @Enumerated(EnumType.ORDINAL) — data corruption risk
+          if grep -rn 'EnumType.ORDINAL' $FILES 2>/dev/null; then
+            FINDINGS="${FINDINGS}\n### Q68 — @Enumerated(EnumType.ORDINAL)\n\`\`\`\n$(grep -n 'EnumType.ORDINAL' $FILES | head -5)\n\`\`\`\nUse @Enumerated(EnumType.STRING) — ORDINAL breaks when enum order changes.\n"
+          fi
+
+          # Q73: Direct repository access from controllers
+          if grep -rn 'Repository' $FILES 2>/dev/null | grep -iE 'Controller|RestController'; then
+            FINDINGS="${FINDINGS}\n### Q73 — Direct repository access from controller\nControllers must not inject repositories. Use Controller → Service → Repository pattern.\n"
+          fi
+
+          # Q75: Collection fetch join with pagination (in-memory pagination OOM)
+          if grep -rn 'JOIN FETCH' $FILES 2>/dev/null | grep -i 'Page'; then
+            FINDINGS="${FINDINGS}\n### Q75 — Collection fetch join with pagination\nJOIN FETCH + Pageable causes in-memory pagination (HHH000104). Paginate without the join first, then load collections.\n"
+          fi
+
+          # Q76: Multiple collection fetch (MultipleBagFetchException / Cartesian product)
+          JOIN_COUNT=$(grep -c 'LEFT JOIN FETCH' $FILES 2>/dev/null | awk -F: '{s+=$2} END {print s}')
+          if [ "${JOIN_COUNT:-0}" -gt 1 ]; then
+            FINDINGS="${FINDINGS}\n### Q76 — Multiple collection fetch joins\nMultiple LEFT JOIN FETCH on bags causes MultipleBagFetchException or Cartesian product. Split into separate queries.\n"
+          fi
+
+          # clear()+addAll() anti-pattern (CMCDOS-3150 — breaks audit trail)
+          if grep -B5 'clear()\|removeAll' $FILES 2>/dev/null | grep 'addAll'; then
+            FINDINGS="${FINDINGS}\n### CMCDOS-3150 — clear()+addAll() on child collections\nBreaks audit trail (IDs change). Use in-place reconciliation: match by ID, update in-place, insert new, delete orphans.\n"
+          fi
+
+          # @Transactional on private method (Spring AOP proxy doesn't intercept)
+          if grep -nE 'private.*@Transactional|@Transactional\s*$' $FILES 2>/dev/null | head -3; then
+            FINDINGS="${FINDINGS}\n### Spring AOP — @Transactional on private method\n@Transactional does not work on private methods (proxy-based AOP). Make the method public or use TransactionTemplate.\n"
+          fi
+
+          # Self-invocation of @Transactional (same class)
+          if grep -B3 '@Transactional' $FILES 2>/dev/null | grep 'this\.'; then
+            FINDINGS="${FINDINGS}\n### Spring AOP — Self-invocation of @Transactional\n@Transactional is bypassed when called from the same class (this.method()). Use TransactionTemplate or inject the bean.\n"
+          fi
+
+          echo "findings=$FINDINGS" >> "$GITHUB_OUTPUT"
+          echo "=== Scan complete ==="
+
+      - name: Comment on PR
+        if: steps.scan.outputs.findings != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const findings = `${{ steps.scan.outputs.findings }}`;
+            const body = [
+              '## 🔍 Anti-Pattern Scan',
+              '',
+              'Non-blocking advisory — review the findings below before merging.',
+              'Mirrors the DMS P1-P7 anti-pattern detection.',
+              '',
+              findings,
+              '',
+              '> **DMS lesson:** These patterns caused 42 production tickets in R1.2.1.',
+              '> Fix them in this PR or create follow-up tickets. Document a system-wide',
+              '> sibling audit in the PR description (Q66 — Layer 8).',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      - name: No findings
+        if: steps.scan.outputs.findings == ''
+        run: echo "No anti-patterns detected. ✅"

@@ -93,13 +93,18 @@ docs/<short-description>      # e.g. docs/changelog-and-learnings
 ci/<short-description>        # e.g. ci/codeql-workflow
 ```
 
+**Enforced by CI**: `branch-naming.yml` fails the PR if the branch name does not
+start with one of: `feat/`, `feature/`, `fix/`, `bugfix/`, `hotfix/`, `docs/`,
+`style/`, `refactor/`, `test/`, `chore/`, `ci/`, `build/`, `perf/`, `revert/`,
+`release/`, `dependabot/`, `renovate/`.
+
 ### Workflow
 
 1. Create a feature branch off `main`: `git checkout -b feat/serializable-capture-retry`
 2. Make commits following Conventional Commits format.
 3. Push and open a PR targeting `main`.
-4. CI gates run: `CI`, `PR Lint`, `Migration Check`, `CodeQL`, `Labeler`.
-5. Copilot review is auto-requested on PR open.
+4. CI gates run: `CI`, `PR Lint`, `Branch Naming`, `Migration Check`, `CodeQL`, `Labeler`, `Size Labeler`.
+5. Advisory checks run: `Copilot Review`, `Anti-Pattern Scan`.
 6. Human review + approval.
 7. Squash-merge to `main` (keeps history clean, one commit per PR).
 8. Release workflow tags the merge commit if `CHANGELOG.md` has a new version.
