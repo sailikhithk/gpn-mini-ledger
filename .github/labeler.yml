@@ -1,0 +1,127 @@
+# .github/labeler.yml — config for actions/labeler@v6
+# Docs: https://github.com/actions/labeler
+#
+# Schema (v5/v6 — breaking change from v4):
+#   <label>:
+#     - changed-files:
+#         any-glob-to-any-file: ['glob', ...]   # OR: any glob matches any file
+#         all-globs-to-any-file: ['glob', ...]  # AND: all globs match (any file)
+#     - base-branch: ['regexp', ...]
+#     - head-branch: ['regexp', ...]
+#
+# Labels MUST exist in the repo (Settings → Labels) before they can be applied.
+# Create them via: `gh label create <name> --color <hex> --description "..."`
+#
+# Top-level options:
+#   changed-files-labels-limit: N  # skip new labels if > N would be added
+#   max-files-changed: N           # skip file-based labeling if > N files changed
+
+changed-files-labels-limit: 8
+max-files-changed: 50
+
+# === Module labels ===
+module:ledger-core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ledger-core/**/*'
+
+module:api-gateway:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'api-gateway/**/*'
+
+module:outbox:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'outbox/**/*'
+
+# === Area labels ===
+area:migration:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ledger-core/src/main/resources/db/migration/**/*'
+
+area:domain:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ledger-core/src/main/java/**/domain/**/*'
+
+area:service:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ledger-core/src/main/java/**/service/**/*'
+
+area:api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ledger-core/src/main/java/**/web/**/*'
+
+area:config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ledger-core/src/main/resources/application*.yml'
+          - '**/application*.yml'
+
+area:test:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ledger-core/src/test/**/*'
+          - '**/src/test/**/*'
+
+# === Infra labels ===
+area:ci-cd:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**/*'
+          - '.github/labeler.yml'
+          - '.github/CODEOWNERS'
+          - '.pre-commit-config.yaml'
+
+area:infra:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'infra/**/*'
+          - 'docker-compose.yml'
+          - '**/Dockerfile'
+
+# === Docs label ===
+area:docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '*.md'
+          - '**/*.md'
+
+# === Branch-based labels ===
+type:feature:
+  - head-branch:
+      - '^feat/'
+      - '^feature/'
+
+type:bugfix:
+  - head-branch:
+      - '^fix/'
+      - '^bugfix/'
+      - '^hotfix/'
+
+type:docs:
+  - head-branch:
+      - '^docs/'
+
+type:ci:
+  - head-branch:
+      - '^ci/'
+
+type:refactor:
+  - head-branch:
+      - '^refactor/'
+
+type:test:
+  - head-branch:
+      - '^test/'
+
+type:chore:
+  - head-branch:
+      - '^chore/'
+      - '^build/'
+      - '^perf/'
+      - '^revert/'

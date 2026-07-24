@@ -1,0 +1,34 @@
+# CODEOWNERS — auto-request reviewers based on changed paths
+# Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Rules:
+#   - Last matching pattern wins (put broad rules first, specific last)
+#   - Owners: @username, @org/team, or email
+#   - Teams must have Write+ access to count toward required reviews
+#   - Enable: Settings → Branches → main → "Require review from Code Owners"
+
+# === Default — everything not matched below ===
+*  @sailikhithk
+
+# === Modules ===
+/ledger-core/       @sailikhithk
+/api-gateway/       @sailikhithk
+/outbox/            @sailikhithk
+
+# === Database migrations (sensitive — require review) ===
+/ledger-core/src/main/resources/db/migration/  @sailikhithk
+
+# === CI/CD + infra (sensitive — require review) ===
+/.github/           @sailikhithk
+/.pre-commit-config.yaml  @sailikhithk
+/scripts/           @sailikhithk
+/infra/             @sailikhithk
+/docker-compose.yml @sailikhithk
+/pom.xml            @sailikhithk
+
+# === Docs ===
+/CHANGELOG.md       @sailikhithk
+/LEARNINGS.md       @sailikhithk
+/CONTRIBUTING.md    @sailikhithk
+/README.md          @sailikhithk
+/*.md               @sailikhithk
