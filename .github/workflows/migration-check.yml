@@ -1,0 +1,114 @@
+# Gate 2: Flyway migration validation
+# Checks naming convention, idempotency, and version ordering.
+# Mirrors the DMS pipeline's Gate 2 (8 sub-checks).
+name: Migration Check
+
+on:
+  pull_request:
+    paths:
+      - 'ledger-core/src/main/resources/db/migration/**'
+  push:
+    branches: [main]
+    paths:
+      - 'ledger-core/src/main/resources/db/migration/**'
+
+permissions:
+  contents: read
+
+jobs:
+  migration-validation:
+    name: Validate Flyway migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check 1 — Naming convention (V{n}__{description}.sql)
+        run: |
+          echo "Checking migration file naming convention..."
+          pattern='^V[0-9]+__[a-z0-9_]+\.sql$'
+          errors=0
+          for f in ledger-core/src/main/resources/db/migration/*.sql; do
+            base=$(basename "$f")
+            if ! echo "$base" | grep -qE "$pattern"; then
+              echo "  FAIL: $base — must match V{n}__{description}.sql (lowercase, double underscore)"
+              errors=$((errors + 1))
+            else
+              echo "  OK:   $base"
+            fi
+          done
+          [ "$errors" -eq 0 ] || exit 1
+
+      - name: Check 2 — Version numbers are sequential
+        run: |
+          echo "Checking version numbers are sequential..."
+          prev=0
+          errors=0
+          for f in $(ls ledger-core/src/main/resources/db/migration/*.sql | sort); do
+            base=$(basename "$f")
+            num=$(echo "$base" | grep -oE '^V[0-9]+' | tr -d 'V')
+            if [ "$num" -le "$prev" ]; then
+              echo "  FAIL: $base — version $num is not greater than previous ($prev)"
+              errors=$((errors + 1))
+            else
+              echo "  OK:   $base (version $num)"
+              prev=$num
+            fi
+          done
+          [ "$errors" -eq 0 ] || exit 1
+
+      - name: Check 3 — Idempotency (CREATE SCHEMA IF NOT EXISTS)
+        run: |
+          echo "Checking CREATE SCHEMA uses IF NOT EXISTS..."
+          errors=0
+          for f in ledger-core/src/main/resources/db/migration/*.sql; do
+            base=$(basename "$f")
+            if grep -q 'CREATE SCHEMA' "$f" && ! grep -q 'CREATE SCHEMA IF NOT EXISTS' "$f"; then
+              echo "  FAIL: $base — CREATE SCHEMA without IF NOT EXISTS (not idempotent)"
+              errors=$((errors + 1))
+            fi
+          done
+          [ "$errors" -eq 0 ] || exit 1
+
+      - name: Check 4 — No bare $$ dollar-quoting (use named tags)
+        run: |
+          echo "Checking for bare \$\$ dollar-quoting (Flyway parser issue)..."
+          errors=0
+          for f in ledger-core/src/main/resources/db/migration/*.sql; do
+            base=$(basename "$f")
+            # Flag lines that use bare $$ instead of named tags like $func$, $body$
+            if grep -nE 'AS \$\$' "$f" | grep -v '\$func\$|\$body\$|\$role\$'; then
+              echo "  FAIL: $base — bare \$\$ dollar-quoting detected. Use named tags: \$func\$, \$body\$, \$role\$"
+              errors=$((errors + 1))
+            fi
+          done
+          [ "$errors" -eq 0 ] || exit 1
+
+      - name: Check 5 — No DROP/DELETE in migrations (append-only)
+        run: |
+          echo "Checking migrations are append-only (no DROP/DELETE/TRUNCATE)..."
+          errors=0
+          for f in ledger-core/src/main/resources/db/migration/*.sql; do
+            base=$(basename "$f")
+            if grep -inE '^\s*(DROP TABLE|DELETE FROM|TRUNCATE)' "$f"; then
+              echo "  FAIL: $base — destructive operation detected. Migrations must be append-only."
+              errors=$((errors + 1))
+            fi
+          done
+          [ "$errors" -eq 0 ] || exit 1
+
+      - name: Check 6 — Role creation is conditional
+        run: |
+          echo "Checking CREATE ROLE uses IF NOT EXISTS guard..."
+          errors=0
+          for f in ledger-core/src/main/resources/db/migration/*.sql; do
+            base=$(basename "$f")
+            if grep -q 'CREATE ROLE' "$f" && ! grep -q 'IF NOT EXISTS' "$f"; then
+              echo "  FAIL: $base — CREATE ROLE without IF NOT EXISTS guard"
+              errors=$((errors + 1))
+            fi
+          done
+          [ "$errors" -eq 0 ] || exit 1
+
+      - name: Summary
+        run: echo "All 6 migration checks passed."

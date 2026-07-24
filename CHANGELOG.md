@@ -19,7 +19,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 0.6.2     | 2026-07-23 | Bugfix: Flyway migrations             | Add `CREATE SCHEMA`, UUID v7 function, conditional roles     |
 | 0.6.3     | 2026-07-23 | Bugfix: Jackson 3 binding             | Remove incompatible `spring.jackson.serialization` config    |
 | 0.7.0     | 2026-07-23 | Bugfix: Transaction isolation bypass  | Replace self-invoked `@Transactional` with `TransactionTemplate` |
-| Unreleased| 2026-07-24 | Docs                                  | CHANGELOG.md + LEARNINGS.md                                  |
+| 0.8.0     | 2026-07-24 | CI/CD + pre-commit + docs             | GitHub Actions, pre-commit hooks, CONTRIBUTING, Copilot review |
+
+---
+
+## [0.8.0] — 2026-07-24 — CI/CD + pre-commit + docs
+
+### Added — GitHub Actions (7 workflows, mirrors DMS pipeline)
+- `ci.yml` (Gate 3-5): compile + test + package on JDK 25, uploads surefire reports.
+- `pr-lint.yml` (W1): validates PR title follows Conventional Commits, non-empty body.
+- `migration-check.yml` (Gate 2): 6 Flyway checks — naming, sequencing, idempotency,
+  dollar-quoting, append-only, conditional roles.
+- `labeler.yml` (W3): file-based + size labels on PRs (module, area, size:xs..xl).
+- `copilot-review.yml` (AI-assist): auto-requests Copilot code review on PR open to `main`.
+  Advisory only — human approval still required (DMS lesson: no rubber-stamping).
+- `codeql.yml` (Security): GitHub CodeQL static analysis for Java, weekly cron.
+- `release.yml` (Release): auto-detects new version in `CHANGELOG.md`, creates git tag
+  `vX.Y.Z` + GitHub Release with extracted release notes.
+
+### Added — Pre-commit hooks
+- `.pre-commit-config.yaml` with 10 hooks: trailing-whitespace, end-of-file-fixer,
+  check-yaml, check-merge-conflict, check-case-conflict, check-added-large-files,
+  detect-private-key, sqlfluff-lint/fix (Flyway migrations), mvn-compile (local),
+  env-leak-check (local, blocks `.env`/secrets).
+- `scripts/pre-commit-env-check.sh` — secret detection in staged files.
+
+### Added — Documentation
+- `CONTRIBUTING.md`: commit message format (Conventional Commits), branching model,
+  tag/release process, branch protection rules, Copilot review policy.
+- `.github/CI-CD.md`: workflow index, pre-commit setup, branch protection, tags.
+
+### Changed
+- `CHANGELOG.md` index updated with 0.8.0 entry.
 
 ---
 

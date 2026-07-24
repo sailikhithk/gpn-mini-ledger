@@ -1,0 +1,82 @@
+# Release: auto-tag on CHANGELOG.md version bump
+# Detects a new version entry in CHANGELOG.md and creates a git tag + GitHub Release.
+# Mirrors the DMS pipeline's release-please pattern but lightweight (no extra deps).
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  tag-and-release:
+    name: Tag + GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.check.outputs.released }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract latest version from CHANGELOG
+        id: check
+        run: |
+          # Find the first "## [X.Y.Z]" or "## [Unreleased]" heading
+          VERSION=$(grep -oE '^## \[([0-9]+\.[0-9]+\.[0-9]+)\]' CHANGELOG.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ -z "$VERSION" ]; then
+            echo "No released version found in CHANGELOG.md (only Unreleased)."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TAG="v${VERSION}"
+          echo "Latest CHANGELOG version: $VERSION (tag: $TAG)"
+
+          # Check if tag already exists
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — skipping release."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $TAG does not exist — will release."
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag
+        if: steps.check.outputs.released == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.check.outputs.version }}" -m "Release v${{ steps.check.outputs.version }}"
+          git push origin "v${{ steps.check.outputs.version }}"
+
+      - name: Extract release notes from CHANGELOG
+        if: steps.check.outputs.released == 'true'
+        id: notes
+        run: |
+          VERSION="${{ steps.check.outputs.version }}"
+          # Extract the section between "## [X.Y.Z]" and the next "## " heading
+          awk -v v="$VERSION" '
+            /^## \[/ { if (insec) exit; if (index($0, "["v"]")) insec=1; next }
+            insec { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          echo "Extracted release notes:"
+          cat /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.check.outputs.version }}" \
+            --title "v${{ steps.check.outputs.version }}" \
+            --notes-file /tmp/release-notes.md \
+            --generate-notes

@@ -1,0 +1,64 @@
+# Gate 3-5: Build + Test + Verify
+# Runs on every push to main and on every PR.
+# Mirrors the DMS pipeline's build/format/lint gates.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build + Test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [25]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Compile (Gate 3)
+        run: ./mvnw -B -ntp compile
+
+      - name: Test (Gate 4 — invariant tests)
+        run: ./mvnw -B -ntp test
+
+      - name: Verify — package without tests (Gate 5)
+        run: ./mvnw -B -ntp package -DskipTests
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-jdk${{ matrix.java }}
+          path: '**/target/surefire-reports/**'
+          if-no-files-found: ignore
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-jdk${{ matrix.java }}
+          path: '**/target/test-classes/**'
+          if-no-files-found: ignore

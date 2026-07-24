@@ -1,0 +1,53 @@
+# W1: PR title format validation
+# Enforces Conventional Commits style: type(scope): description
+# Mirrors the DMS pipeline's W1 hygiene workflow.
+name: PR Lint
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title format
+        run: |
+          title="${{ github.event.pull_request.title }}"
+          echo "PR title: $title"
+
+          # Conventional Commits: type(scope): description
+          # Allowed types: feat, fix, docs, style, refactor, test, chore, ci, build, perf, revert
+          pattern='^(feat|fix|docs|style|refactor|test|chore|ci|build|perf|revert)(\([a-z-]+\))?!?: .+'
+
+          if ! echo "$title" | grep -qE "$pattern"; then
+            echo "ERROR: PR title does not follow Conventional Commits format."
+            echo ""
+            echo "Expected: type(scope): description"
+            echo "  type:    feat|fix|docs|style|refactor|test|chore|ci|build|perf|revert"
+            echo "  scope:   optional, lowercase with hyphens (e.g. ledger-core, migration, ci)"
+            echo "  !:       optional, for breaking changes"
+            echo "  example: feat(ledger-core): add SERIALIZABLE capture with retry on 40001"
+            echo ""
+            exit 1
+          fi
+
+          echo "PR title format: OK"
+
+  pr-description:
+    name: Validate PR description (non-empty)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body is not empty
+        run: |
+          body="${{ github.event.pull_request.body }}"
+          if [ -z "$(echo "$body" | tr -d '[:space:]')" ]; then
+            echo "ERROR: PR description is empty. Please describe what changed and why."
+            exit 1
+          fi
+          echo "PR description: OK"
