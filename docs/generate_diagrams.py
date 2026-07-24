@@ -10,8 +10,8 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # Dark mode graph attributes
 DARK_ATTR = {
-    "bgcolor": "#0d1117",
-    "fontcolor": "#c9d1d9",
+    "bgcolor": "white",
+    "fontcolor": "#1f2328",
     "fontsize": "14",
     "pad": "0.5",
     "ranksep": "1.0",
@@ -19,7 +19,7 @@ DARK_ATTR = {
 }
 
 NODE_ATTR = {
-    "fontcolor": "#c9d1d9",
+    "fontcolor": "#1f2328",
     "fontsize": "12",
 }
 
