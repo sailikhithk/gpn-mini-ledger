@@ -1,0 +1,206 @@
+version: "3.9"
+
+services:
+  # ============================================================
+  # Layer 1: Core Ledger data plane (CP)
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: gpn-postgres
+    environment:
+      POSTGRES_DB: gpn_ledger
+      POSTGRES_USER: gpn
+      POSTGRES_PASSWORD: gpn_local_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gpn -d gpn_ledger"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - gpn-net
+
+  # ============================================================
+  # Layer 2: Edge cache (AP) - Redis for idempotency fast path
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: gpn-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - gpn-net
+
+  # ============================================================
+  # Layer 3: Async lane (BASE) - Redpanda as Kafka-compatible bus
+  # ============================================================
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: gpn-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092
+      - --advertise-kafka-addr internal://redpanda:9092
+      - --pandaproxy-addr internal://0.0.0.0:8082
+      - --advertise-pandaproxy-addr internal://redpanda:8082
+      - --schema-registry-addr internal://0.0.0.0:8081
+      - --rpc-addr internal://0.0.0.0:33145
+      - --advertise-rpc-addr internal://redpanda:33145
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+    ports:
+      - "9092:9092"
+      - "8081:8081"
+      - "8082:8082"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'HEALTHY'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - gpn-net
+
+  # ============================================================
+  # Local AWS Stack - S3, SQS, DynamoDB, Secrets Manager
+  # Zero cloud cost. Runs all AWS services locally.
+  # ============================================================
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: gpn-localstack
+    environment:
+      - SERVICES=s3,sqs,dynamodb,secretsmanager,kinesis,cloudwatch
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack
+      - HOSTNAME_EXTERNAL=localstack
+      - S3_WEB_ADDRESS=localhost:4566
+    ports:
+      - "4566:4566"    # LocalStack edge port (all services)
+      - "4571:4571"    # LocalStack external port
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./infra/localstack/init-aws.sh:/etc/localstack/init/init-aws.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:4566/_localstack/health | grep -q 's3'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks:
+      - gpn-net
+
+  # ============================================================
+  # API Gateway (Spring Cloud Gateway) - edge layer
+  # Rate limiting, idempotency key extraction, routing
+  # ============================================================
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: gpn-api-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LEDGER_SERVICE_URL=http://ledger-core:8081
+    ports:
+      - "8080:8080"
+    networks:
+      - gpn-net
+
+  # ============================================================
+  # Ledger Core service (Layer 1 + Layer 2 orchestration)
+  # ============================================================
+  ledger-core:
+    build:
+      context: ./ledger-core
+      dockerfile: Dockerfile
+    container_name: gpn-ledger-core
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=gpn_ledger
+      - POSTGRES_USER=gpn
+      - POSTGRES_PASSWORD=gpn_local_dev
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - S3_AUDIT_BUCKET=gpn-audit-archive
+      - SQS_WEBHOOK_DLQ_URL=http://localstack:4566/000000000000/gpn-webhook-dlq
+    ports:
+      - "8081:8081"
+    networks:
+      - gpn-net
+
+  # ============================================================
+  # Outbox Relay worker (Layer 3) - publishes events to Redpanda
+  # ============================================================
+  outbox-relay:
+    build:
+      context: ./outbox
+      dockerfile: Dockerfile
+    container_name: gpn-outbox-relay
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=gpn_ledger
+      - POSTGRES_USER=gpn
+      - POSTGRES_PASSWORD=gpn_local_dev
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - OUTBOX_POLL_INTERVAL_MS=500
+      - OUTBOX_BATCH_SIZE=100
+      - OUTBOX_STALE_CLAIM_MS=30000
+    networks:
+      - gpn-net
+
+networks:
+  gpn-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  redpanda_data:
+  localstack_data:

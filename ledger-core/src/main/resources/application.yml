@@ -1,0 +1,82 @@
+spring:
+  application:
+    name: gpn-ledger-core
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:gpn_ledger}
+    username: ${POSTGRES_USER:gpn}
+    password: ${POSTGRES_PASSWORD:gpn_local_dev}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 3000
+
+  jpa:
+    hibernate:
+      ddl-auto: none  # Flyway owns the schema, Hibernate must not touch it
+    properties:
+      hibernate:
+        default_schema: ledger
+        jdbc.time_zone: UTC
+        # SERIALIZABLE is enforced per-transaction in LedgerService, not globally
+
+  flyway:
+    enabled: true
+    schemas: ledger, edge, async, audit
+    default-schema: ledger
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 100ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: gpn-ledger-core
+
+# GPN-specific configuration
+gpn:
+  ledger:
+    # SERIALIZABLE isolation enforced on all ledger writes (FR-1.3)
+    isolation: SERIALIZABLE
+    # Max retries on serialization failure SQLSTATE 40001 (FR-1.4)
+    max-retries: 3
+    # Backoff base in milliseconds
+    retry-backoff-ms: 50
+  idempotency:
+    # Redis TTL for idempotency records (72 hours)
+    ttl-hours: 72
+    # SHA-256 fingerprint algorithm
+    fingerprint-algorithm: SHA-256
+  audit:
+    # Advisory lock key for audit chain serialization (FR-4.4)
+    advisory-lock-key: 72718
+    # Genesis hash for the first entry in the chain
+    genesis-hash: GENESIS
+
+logging:
+  level:
+    io.gpn: INFO
+    org.springframework.orm.jpa: WARN
+    org.hibernate.SQL: WARN
+    org.flywaydb: INFO
+  pattern:
+    console: "%d{ISO8601} [%thread] %-5level %logger{36} - %msg [traceId=%X{traceId}]"
