@@ -104,11 +104,6 @@ graph TB
     Outbox --> Postgres
     Outbox --> LocalStack
     Interviewer -.->|"clone + verify"| GPN
-
-    style Ledger fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
-    style Gateway fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style Outbox fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style Postgres fill:#fce4ec,stroke:#c62828
 ```
 
 ### The Layered Priority Stack
@@ -147,10 +142,6 @@ graph LR
 
     L1 -.->|"wins on conflict"| L2
     L2 -.->|"wins on conflict"| L3
-
-    style L1 fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
-    style L2 fill:#fff3e0,stroke:#e65100,stroke-width:3px
-    style L3 fill:#e3f2fd,stroke:#1565c0,stroke-width:3px
 ```
 
 **Conflict resolution examples:**
@@ -199,11 +190,6 @@ graph TB
     Orchestrator --> Fraud
     Outbox --> Webhook
     Reconciliation --> Postgres
-
-    style LedgerCore fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
-    style APIGateway fill:#ffe0b2,stroke:#e65100,stroke-width:2px
-    style Outbox fill:#bbdefb,stroke:#1565c0,stroke-width:2px
-    style Postgres fill:#fce4ec,stroke:#c62828,stroke-width:2px
 ```
 
 > **Status**: `ledger-core`, `api-gateway`, and `outbox` are implemented. Remaining modules are planned — see [`docs/PRD.md`](docs/PRD.md) for the full roadmap.
@@ -224,7 +210,7 @@ sequenceDiagram
     GW->>GW: Validate + rate limit
 
     rect rgb(232, 245, 233)
-        Note over LS,PG: Layer 1 — CP (strong consistency)
+        Note over LS,PG: Layer 1 - CP (strong consistency)
         GW->>LS: capture(idempotencyKey, authId, amount)
         LS->>PG: BEGIN ISOLATION SERIALIZABLE
         LS->>PG: SELECT auth_hold FOR UPDATE
@@ -243,7 +229,7 @@ sequenceDiagram
     end
 
     rect rgb(227, 242, 253)
-        Note over OB,WH: Layer 3 — BASE (eventual)
+        Note over OB,WH: Layer 3 - BASE (eventual)
         OB->>PG: SELECT ... FOR UPDATE SKIP LOCKED
         PG-->>OB: claimed events
         OB->>WH: POST event (HMAC signed)
@@ -328,11 +314,6 @@ flowchart TD
     Retry -->|"yes"| Backoff["sleep backoffMs * 2^attempt<br/>(exponential)"]
     Backoff --> BeginTx
     Retry -->|"no"| Propagate["throw ConcurrencyFailureException<br/>(retried 10x, still contended)"]
-
-    style ReturnSuccess fill:#c8e6c9,stroke:#2e7d32
-    style ExceedsError fill:#ffcdd2,stroke:#c62828
-    style Propagate fill:#ffcdd2,stroke:#c62828
-    style BeginTx fill:#e3f2fd,stroke:#1565c0
 ```
 
 **Tested by:** `ConcurrentCaptureInvariantTest` — 20 threads, 10 succeed, 10 rejected, zero "other errors", ledger balanced.
@@ -435,10 +416,6 @@ graph LR
     Squash --> ReleaseWF
     ReleaseWF -.-> Stale
     ReleaseWF -.-> Dependabot
-
-    style CI fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
-    style Squash fill:#e8f5e9,stroke:#2e7d32
-    style ReleaseWF fill:#fff3e0,stroke:#e65100
 ```
 
 **12 workflows active.** See [`.github/CI-CD.md`](.github/CI-CD.md) for the full pipeline reference and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow.
