@@ -17,15 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check PR title format
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          title="${{ github.event.pull_request.title }}"
-          echo "PR title: $title"
+          echo "PR title: $PR_TITLE"
 
           # Conventional Commits: type(scope): description
           # Allowed types: feat, fix, docs, style, refactor, test, chore, ci, build, perf, revert
           pattern='^(feat|fix|docs|style|refactor|test|chore|ci|build|perf|revert)(\([a-z-]+\))?!?: .+'
 
-          if ! echo "$title" | grep -qE "$pattern"; then
+          if ! echo "$PR_TITLE" | grep -qE "$pattern"; then
             echo "ERROR: PR title does not follow Conventional Commits format."
             echo ""
             echo "Expected: type(scope): description"
@@ -44,10 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check PR body is not empty
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          body="${{ github.event.pull_request.body }}"
-          if [ -z "$(echo "$body" | tr -d '[:space:]')" ]; then
+          # Strip all whitespace (spaces, tabs, newlines) and check if anything remains
+          body_trimmed=$(printf '%s' "$PR_BODY" | tr -d '[:space:]')
+          if [ -z "$body_trimmed" ]; then
             echo "ERROR: PR description is empty. Please describe what changed and why."
             exit 1
           fi
+          echo "PR description length: ${#body_trimmed} chars (non-whitespace)"
           echo "PR description: OK"
