@@ -109,11 +109,11 @@ def diagram_01_system_context():
     from diagrams.aws.storage import S3
     from diagrams.onprem.ci import GithubActions
 
-    DMS_BG = "#101010"
-    DMS_PANEL = "#1a1a1a"
-    DMS_ACCENT = "#0078d4"
-    DMS_FONT = "#ffffff"
-    DMS_EDGE = "#9ca3af"
+    DMS_BG = "white"
+    DMS_PANEL = "#f6f8fa"
+    DMS_ACCENT = "#0969da"
+    DMS_FONT = "#1f2328"
+    DMS_EDGE = "#656d76"
 
     dms_graph = {
         "bgcolor": DMS_BG,
@@ -145,7 +145,7 @@ def diagram_01_system_context():
         "shape": "note",
         "style": "filled",
         "fillcolor": DMS_PANEL,
-        "color": "#333333",
+        "color": "#d0d7de",
         "fontcolor": DMS_FONT,
         "fontsize": "12",
         "labelloc": "c",
@@ -170,8 +170,8 @@ def diagram_01_system_context():
             "External Actors",
             graph_attr={
                 "bgcolor": DMS_PANEL,
-                "pencolor": "#555555",
-                "fontcolor": "white",
+                "pencolor": DMS_EDGE,
+                "fontcolor": DMS_FONT,
             },
         ):
             cardholder = Client("Cardholder")
@@ -183,8 +183,8 @@ def diagram_01_system_context():
             "GPN Mini Ledger",
             graph_attr={
                 "bgcolor": DMS_PANEL,
-                "pencolor": "#777777",
-                "fontcolor": "white",
+                "pencolor": DMS_EDGE,
+                "fontcolor": DMS_FONT,
             },
         ):
             gateway = APIGateway("API Gateway\n(Edge Switch)")
@@ -202,8 +202,8 @@ def diagram_01_system_context():
             "CI/CD",
             graph_attr={
                 "bgcolor": DMS_PANEL,
-                "pencolor": "#555555",
-                "fontcolor": "white",
+                "pencolor": DMS_EDGE,
+                "fontcolor": DMS_FONT,
             },
         ):
             github = GithubActions("GitHub Actions")
