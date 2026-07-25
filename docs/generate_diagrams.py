@@ -8,7 +8,7 @@ Layout strategy:
 - This produces clean, square-ish diagrams that look like a human drew them.
 """
 import os
-from diagrams import Diagram, Cluster, Edge
+from diagrams import Diagram, Cluster, Edge, Node
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "diagrams")
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -103,47 +103,148 @@ def diagram_01_system_context():
     from diagrams.onprem.client import Client, Users
     from diagrams.aws.network import APIGateway
     from diagrams.programming.framework import Spring
-    from diagrams.aws.integration import SQS
+    from diagrams.aws.integration import SQS, SNS
     from diagrams.onprem.database import PostgreSQL
     from diagrams.onprem.inmemory import Redis
     from diagrams.aws.storage import S3
+    from diagrams.onprem.ci import GithubActions
+
+    DMS_BG = "#101010"
+    DMS_PANEL = "#1a1a1a"
+    DMS_ACCENT = "#0078d4"
+    DMS_FONT = "#ffffff"
+    DMS_EDGE = "#9ca3af"
+
+    dms_graph = {
+        "bgcolor": DMS_BG,
+        "fontcolor": DMS_FONT,
+        "fontsize": "14",
+        "pad": "0.2",
+        "ranksep": "0.7",
+        "nodesep": "0.4",
+        "splines": "ortho",
+        "compound": "false",
+        "ratio": "fill",
+        "dpi": "130",
+        "size": "14,10",
+        "label": "GPN Mini Ledger",
+        "labelloc": "t",
+        "labeljust": "l",
+    }
+    dms_node = {
+        "fontcolor": DMS_FONT,
+        "fontsize": "12",
+        "shape": "box",
+        "style": "rounded",
+        "fixedsize": "false",
+        "labelloc": "b",
+    }
+    dms_edge = {"color": DMS_EDGE, "fontcolor": DMS_FONT}
+
+    panel_attr = {
+        "shape": "note",
+        "style": "filled",
+        "fillcolor": DMS_PANEL,
+        "color": "#333333",
+        "fontcolor": DMS_FONT,
+        "fontsize": "12",
+        "labelloc": "c",
+        "width": "5.0",
+        "height": "3.5",
+        "fixedsize": "false",
+    }
+
+    def dms_note(text):
+        return Node(text, **panel_attr)
 
     with Diagram(
-        "System Context",
+        "",
         filename=os.path.join(OUT_DIR, "01-system-context"),
         show=False,
         direction="LR",
-        graph_attr=graph_attrs(size="14,8"),
-        node_attr=NODE_ATTR,
+        graph_attr=dms_graph,
+        node_attr=dms_node,
+        edge_attr=dms_edge,
     ):
-        with Cluster("External Actors"):
+        with Cluster(
+            "External Actors",
+            graph_attr={
+                "bgcolor": DMS_PANEL,
+                "pencolor": "#555555",
+                "fontcolor": "white",
+            },
+        ):
             cardholder = Client("Cardholder")
             merchant = Client("Merchant")
             interviewer = Users("Capital One\nInterviewer")
             hrow([cardholder, merchant, interviewer])
 
-        with Cluster("GPN Mini Ledger"):
+        with Cluster(
+            "GPN Mini Ledger",
+            graph_attr={
+                "bgcolor": DMS_PANEL,
+                "pencolor": "#777777",
+                "fontcolor": "white",
+            },
+        ):
             gateway = APIGateway("API Gateway\n(Edge Switch)")
             ledger = Spring("Ledger Core\n(CP - Strong Consistency)")
             outbox = SQS("Outbox Worker\n(BASE - Eventual)")
-            hrow([gateway, ledger, outbox])
+            sns = SNS("Webhook\nNotifier")
+            hrow([gateway, ledger, outbox, sns])
 
-        with Cluster("Local Infrastructure (Docker)"):
             postgres = PostgreSQL("PostgreSQL 16\nSERIALIZABLE + Flyway")
             redis = Redis("Redis 7\nIdempotency cache")
-            localstack = S3("LocalStack\nS3 / SQS / DynamoDB")
-            hrow([postgres, redis, localstack])
+            s3 = S3("LocalStack S3\nObject Storage")
+            hrow([postgres, redis, s3])
+
+        with Cluster(
+            "CI/CD",
+            graph_attr={
+                "bgcolor": DMS_PANEL,
+                "pencolor": "#555555",
+                "fontcolor": "white",
+            },
+        ):
+            github = GithubActions("GitHub Actions")
+
+        notes = dms_note(
+            "Flow\n"
+            "- Cardholder pays Merchant\n"
+            "- Merchant posts authorize / capture / refund\n"
+            "- API Gateway routes to Ledger Core\n"
+            "- Core writes PostgreSQL + outbox\n"
+            "- SNS webhook returns 200 OK\n\n"
+            "Authentication / Idempotency\n"
+            "- Redis caches idempotency keys\n"
+            "- prevents duplicate capture / refund\n\n"
+            "Legend\n"
+            "1. API Gateway (Edge Switch)\n"
+            "2. Ledger Core (CP - Strong Consistency)\n"
+            "3. Outbox Worker (BASE - Eventual)\n"
+            "4. PostgreSQL 16 (SERIALIZABLE + Flyway)\n"
+            "5. Redis 7 (Idempotency cache)\n"
+            "6. LocalStack S3 (Object Storage)\n"
+            "7. SNS Webhook Notifier\n"
+            "8. GitHub Actions (CI/CD)"
+        )
 
         cardholder >> Edge(label="payment") >> merchant
         merchant >> Edge(label="authorize / capture / refund") >> gateway
         gateway >> Edge(label="ledger write") >> ledger
         ledger >> Edge(label="publish event") >> outbox
+        outbox >> Edge(label="dispatch") >> sns
+        sns >> Edge(style="dotted", label="200 OK / retry") >> merchant
 
+        gateway >> Edge(style="dashed", label="cache check") >> redis
         ledger >> Edge(style="dashed") >> postgres
-        gateway >> Edge(style="dashed") >> redis
-        outbox >> Edge(style="dashed") >> postgres
-        outbox >> Edge(style="dashed") >> localstack
+        ledger >> Edge(style="dashed") >> s3
+
         interviewer >> Edge(style="dotted", label="clone + verify") >> ledger
+        github >> Edge(style="dashed", label="build + test") >> ledger
+
+        # Push the Notes panel to the right of the system cluster.
+        outbox >> Edge(style="invis") >> notes
 
 
 # ------------------------------------------------------------------------------
