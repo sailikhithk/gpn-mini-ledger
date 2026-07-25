@@ -136,7 +136,10 @@ def diagram_01_system_context():
         "fontsize": "12",
         "shape": "box",
         "style": "rounded",
-        "fixedsize": "false",
+        "fixedsize": "true",
+        "width": "1.4",
+        "height": "1.3",
+        "imagescale": "true",
         "labelloc": "b",
     }
     dms_edge = {"color": DMS_EDGE, "fontcolor": DMS_FONT}
@@ -166,13 +169,7 @@ def diagram_01_system_context():
         node_attr=dms_node,
         edge_attr=dms_edge,
     ):
-        # Row 0: CI/CD
-        row_cicd = snake_row("CI/CD", [
-            lambda: GithubActions("GitHub Actions"),
-        ])
-        github = row_cicd[0]
-
-        # Row 1: External Actors left-to-right
+        # Top row: External Actors (left) and CI/CD (right)
         row_ext = snake_row("External Actors", [
             lambda: Client("Cardholder"),
             lambda: Client("Merchant"),
@@ -181,7 +178,20 @@ def diagram_01_system_context():
         cardholder, merchant, interviewer = row_ext
         cardholder >> Edge(label="payment", constraint="false") >> merchant
 
-        # Row 2: GPN Mini Ledger main flow left-to-right
+        with Cluster(
+            "CI/CD",
+            graph_attr={
+                "bgcolor": DMS_PANEL,
+                "pencolor": DMS_EDGE,
+                "fontcolor": DMS_FONT,
+            },
+        ):
+            github = GithubActions("GitHub Actions")
+
+        # Keep CI/CD on the same top rank as External Actors, at the right
+        interviewer >> Edge(style="invis", constraint="false") >> github
+
+        # Row 1: GPN Mini Ledger main flow left-to-right
         row_app = snake_row("GPN Mini Ledger", [
             lambda: APIGateway("API Gateway\n(Edge Switch)"),
             lambda: Spring("Ledger Core\n(CP - Strong Consistency)"),
@@ -191,7 +201,7 @@ def diagram_01_system_context():
         gateway, ledger, outbox, sns = row_app
         snake_arrows(row_app)
 
-        # Row 3: Data Tier left-to-right
+        # Row 2: Data Tier left-to-right
         row_data = snake_row("Data Tier", [
             lambda: Redis("Redis 7\nIdempotency cache"),
             lambda: PostgreSQL("PostgreSQL 16\nSERIALIZABLE + Flyway"),
@@ -228,11 +238,11 @@ def diagram_01_system_context():
                 "8. GitHub Actions (CI/CD)"
             )
 
-        # Snake drops and cross-row edges
+        # Snake drops between rows
         snake_drop(cardholder, gateway, merchant, gateway, label="authorize / capture / refund")
         snake_drop(gateway, redis, sns, s3)
 
-        # In-application flow is already drawn by snake_arrows; add labels
+        # Labels on the application flow
         gateway >> Edge(label="ledger write", constraint="false") >> ledger
         ledger >> Edge(label="publish event", constraint="false") >> outbox
         outbox >> Edge(label="dispatch", constraint="false") >> sns
@@ -242,12 +252,12 @@ def diagram_01_system_context():
         ledger >> Edge(style="dashed") >> postgres
         ledger >> Edge(style="dashed") >> s3
 
-        # Supporting edges (do not affect main flow rank)
+        # Supporting edges
         interviewer >> Edge(style="dotted", label="clone + verify", constraint="false") >> ledger
         github >> Edge(style="dashed", label="build + test", constraint="false") >> ledger
         sns >> Edge(style="dotted", label="200 OK / retry", constraint="false") >> merchant
 
-        # Push Notes to the right of the application row
+        # Notes to the right of the application row
         sns >> Edge(style="invis", constraint="false") >> notes
 
 
