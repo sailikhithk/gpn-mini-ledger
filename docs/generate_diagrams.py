@@ -161,90 +161,94 @@ def diagram_01_system_context():
         "",
         filename=os.path.join(OUT_DIR, "01-system-context"),
         show=False,
-        direction="LR",
+        direction="TB",
         graph_attr=dms_graph,
         node_attr=dms_node,
         edge_attr=dms_edge,
     ):
+        # Row 0: CI/CD
+        row_cicd = snake_row("CI/CD", [
+            lambda: GithubActions("GitHub Actions"),
+        ])
+        github = row_cicd[0]
+
+        # Row 1: External Actors left-to-right
+        row_ext = snake_row("External Actors", [
+            lambda: Client("Cardholder"),
+            lambda: Client("Merchant"),
+            lambda: Users("Capital One\nInterviewer"),
+        ])
+        cardholder, merchant, interviewer = row_ext
+        cardholder >> Edge(label="payment", constraint="false") >> merchant
+
+        # Row 2: GPN Mini Ledger main flow left-to-right
+        row_app = snake_row("GPN Mini Ledger", [
+            lambda: APIGateway("API Gateway\n(Edge Switch)"),
+            lambda: Spring("Ledger Core\n(CP - Strong Consistency)"),
+            lambda: SQS("Outbox Worker\n(BASE - Eventual)"),
+            lambda: SNS("Webhook\nNotifier"),
+        ])
+        gateway, ledger, outbox, sns = row_app
+        snake_arrows(row_app)
+
+        # Row 3: Data Tier left-to-right
+        row_data = snake_row("Data Tier", [
+            lambda: Redis("Redis 7\nIdempotency cache"),
+            lambda: PostgreSQL("PostgreSQL 16\nSERIALIZABLE + Flyway"),
+            lambda: S3("LocalStack S3\nObject Storage"),
+        ])
+        redis, postgres, s3 = row_data
+
         with Cluster(
-            "External Actors",
+            "Notes",
             graph_attr={
-                "bgcolor": DMS_PANEL,
-                "pencolor": DMS_EDGE,
+                "bgcolor": DMS_BG,
+                "pencolor": DMS_BG,
                 "fontcolor": DMS_FONT,
             },
         ):
-            cardholder = Client("Cardholder")
-            merchant = Client("Merchant")
-            interviewer = Users("Capital One\nInterviewer")
-            hrow([cardholder, merchant, interviewer])
+            notes = dms_note(
+                "Flow\n"
+                "- Cardholder pays Merchant\n"
+                "- Merchant posts authorize / capture / refund\n"
+                "- API Gateway routes to Ledger Core\n"
+                "- Core writes PostgreSQL + outbox\n"
+                "- SNS webhook returns 200 OK\n\n"
+                "Authentication / Idempotency\n"
+                "- Redis caches idempotency keys\n"
+                "- prevents duplicate capture / refund\n\n"
+                "Legend\n"
+                "1. API Gateway (Edge Switch)\n"
+                "2. Ledger Core (CP - Strong Consistency)\n"
+                "3. Outbox Worker (BASE - Eventual)\n"
+                "4. PostgreSQL 16 (SERIALIZABLE + Flyway)\n"
+                "5. Redis 7 (Idempotency cache)\n"
+                "6. LocalStack S3 (Object Storage)\n"
+                "7. SNS Webhook Notifier\n"
+                "8. GitHub Actions (CI/CD)"
+            )
 
-        with Cluster(
-            "GPN Mini Ledger",
-            graph_attr={
-                "bgcolor": DMS_PANEL,
-                "pencolor": DMS_EDGE,
-                "fontcolor": DMS_FONT,
-            },
-        ):
-            gateway = APIGateway("API Gateway\n(Edge Switch)")
-            ledger = Spring("Ledger Core\n(CP - Strong Consistency)")
-            outbox = SQS("Outbox Worker\n(BASE - Eventual)")
-            sns = SNS("Webhook\nNotifier")
-            hrow([gateway, ledger, outbox, sns])
+        # Snake drops and cross-row edges
+        snake_drop(cardholder, gateway, merchant, gateway, label="authorize / capture / refund")
+        snake_drop(gateway, redis, sns, s3)
 
-            postgres = PostgreSQL("PostgreSQL 16\nSERIALIZABLE + Flyway")
-            redis = Redis("Redis 7\nIdempotency cache")
-            s3 = S3("LocalStack S3\nObject Storage")
-            hrow([postgres, redis, s3])
+        # In-application flow is already drawn by snake_arrows; add labels
+        gateway >> Edge(label="ledger write", constraint="false") >> ledger
+        ledger >> Edge(label="publish event", constraint="false") >> outbox
+        outbox >> Edge(label="dispatch", constraint="false") >> sns
 
-        with Cluster(
-            "CI/CD",
-            graph_attr={
-                "bgcolor": DMS_PANEL,
-                "pencolor": DMS_EDGE,
-                "fontcolor": DMS_FONT,
-            },
-        ):
-            github = GithubActions("GitHub Actions")
-
-        notes = dms_note(
-            "Flow\n"
-            "- Cardholder pays Merchant\n"
-            "- Merchant posts authorize / capture / refund\n"
-            "- API Gateway routes to Ledger Core\n"
-            "- Core writes PostgreSQL + outbox\n"
-            "- SNS webhook returns 200 OK\n\n"
-            "Authentication / Idempotency\n"
-            "- Redis caches idempotency keys\n"
-            "- prevents duplicate capture / refund\n\n"
-            "Legend\n"
-            "1. API Gateway (Edge Switch)\n"
-            "2. Ledger Core (CP - Strong Consistency)\n"
-            "3. Outbox Worker (BASE - Eventual)\n"
-            "4. PostgreSQL 16 (SERIALIZABLE + Flyway)\n"
-            "5. Redis 7 (Idempotency cache)\n"
-            "6. LocalStack S3 (Object Storage)\n"
-            "7. SNS Webhook Notifier\n"
-            "8. GitHub Actions (CI/CD)"
-        )
-
-        cardholder >> Edge(label="payment") >> merchant
-        merchant >> Edge(label="authorize / capture / refund") >> gateway
-        gateway >> Edge(label="ledger write") >> ledger
-        ledger >> Edge(label="publish event") >> outbox
-        outbox >> Edge(label="dispatch") >> sns
-        sns >> Edge(style="dotted", label="200 OK / retry") >> merchant
-
+        # Data connections
         gateway >> Edge(style="dashed", label="cache check") >> redis
         ledger >> Edge(style="dashed") >> postgres
         ledger >> Edge(style="dashed") >> s3
 
-        interviewer >> Edge(style="dotted", label="clone + verify") >> ledger
-        github >> Edge(style="dashed", label="build + test") >> ledger
+        # Supporting edges (do not affect main flow rank)
+        interviewer >> Edge(style="dotted", label="clone + verify", constraint="false") >> ledger
+        github >> Edge(style="dashed", label="build + test", constraint="false") >> ledger
+        sns >> Edge(style="dotted", label="200 OK / retry", constraint="false") >> merchant
 
-        # Push the Notes panel to the right of the system cluster.
-        outbox >> Edge(style="invis") >> notes
+        # Push Notes to the right of the application row
+        sns >> Edge(style="invis", constraint="false") >> notes
 
 
 # ------------------------------------------------------------------------------
