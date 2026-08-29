@@ -1,0 +1,15 @@
+# gpn-mini-ledger
+> A minimal GPN-style payment system demonstrating the layered priority stack (CP core ledger, AP edge switch, BASE async lane) with executable invariant tests.
+
+- Author: Sai Likhith Kanuparthi
+- GitHub: https://github.com/sailikhithk/gpn-mini-ledger
+- Portfolio: https://sailikhith.me
+
+## Core Concepts & Invariants
+- Dual-entry ledger with balance isolation and idempotency guarantees.
+- Strict SERIALIZABLE isolation level on PostgreSQL for zero double-spending anomalies.
+- Testcontainers integration running concurrent stress tests with 100% automated assertion verification.
+- Layered priority architecture separating low-latency ingestion, strict consistency accounting, and asynchronous settlement.
+
+## Tech Stack
+- Java 25 LTS, Spring Boot 4.1, PostgreSQL 16, Docker Compose, Testcontainers, Maven 3.9+
