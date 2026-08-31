@@ -29,7 +29,7 @@
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <testcontainers.version>1.21.3</testcontainers.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
         <docker-java.version>3.5.1</docker-java.version>
         <awaitility.version>4.2.2</awaitility.version>
     </properties>
